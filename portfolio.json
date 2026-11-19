@@ -1,0 +1,7 @@
+{
+  "title": "Landlord: Property Trading Game",
+  "description": "The classic property-trading board game: roll, buy streets, build houses and hotels, and bankrupt your rivals. Play against bots or pass-and-play.",
+  "tags": ["React", "useReducer", "Game logic"],
+  "port": 5176,
+  "order": 3
+}

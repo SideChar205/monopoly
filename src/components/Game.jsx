@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { SPACES, GROUPS, JAIL_FINE, groupMembers } from '../game/board.js'
-import { activePlayers, netWorth, propertiesOf } from '../game/rules.js'
-import { botMove } from '../game/bot.js'
+import { activePlayers, netWorth, propertiesOf, auctionBidder } from '../game/rules.js'
+import { botMove, botActor } from '../game/bot.js'
 import Board, { Token } from './Board.jsx'
 import Dice from './Dice.jsx'
 import Deed from './Deed.jsx'
@@ -88,7 +88,9 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
   const lastCardId = useRef(game.lastCard?.id ?? 0)
 
   const me = game.players[game.current]
-  const myTurn = !me.isBot && game.phase !== 'over'
+  // whose move it is: in an auction, whoever's turn it is to bid
+  const actor = game.players[botActor(game)] ?? me
+  const myTurn = !actor.isBot && game.phase !== 'over'
   const busy = walking || card !== null // wait for the token / card before the next step
 
   // show a drawn card in the middle of the board for a moment
@@ -106,13 +108,13 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
 
   // bots play by themselves, one action at a time
   useEffect(() => {
-    if (!me.isBot || game.phase === 'over' || busy) return
+    if (!actor.isBot || game.phase === 'over' || busy) return
     const action = botMove(game)
     if (!action) return
     const quick = ['BUILD', 'SELL', 'MORTGAGE', 'UNMORTGAGE'].includes(action.type)
     const t = setTimeout(() => dispatch(action), quick ? 350 : 700)
     return () => clearTimeout(t)
-  }, [game, busy, me.isBot, dispatch])
+  }, [game, busy, actor.isBot, dispatch])
 
   useEffect(() => setConfirmQuit(null), [game.current, game.phase])
 
@@ -130,7 +132,9 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
           <Dice key={game.rollId} dice={game.dice} />
 
           <div className="prompt">
-            {game.phase === 'over' ? null : !myTurn ? (
+            {game.phase === 'over' ? null : game.phase === 'auction' ? (
+              <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} />
+            ) : !myTurn ? (
               <p className="thinking">
                 <Token player={me} index={game.current} /> {me.name} is thinking<span className="dots" />
               </p>
@@ -185,7 +189,7 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
         </div>
       </aside>
 
-      {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} viewer={game.current} onClose={() => setDeed(null)} />}
+      {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} onClose={() => setDeed(null)} />}
       {game.phase === 'over' && <GameOver game={game} onPlayAgain={onPlayAgain} onQuit={onQuit} />}
     </div>
   )
@@ -202,9 +206,12 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
       return (
         <>
           <p className="prompt-title">You're in jail <small>(try {me.jailTurns + 1} of 3)</small></p>
+          {me.jailTurns >= 2 && <p className="prompt-sub">Last try: no doubles means you pay {money(JAIL_FINE)} and move.</p>}
           <div className="prompt-buttons">
             <button className="btn primary" onClick={act('ROLL')}>Roll for doubles</button>
-            <button className="btn" disabled={me.cash < JAIL_FINE} onClick={act('PAY_FINE')}>Pay {money(JAIL_FINE)}</button>
+            {me.jailTurns < 2 && (
+              <button className="btn" disabled={me.cash < JAIL_FINE} onClick={act('PAY_FINE')}>Pay {money(JAIL_FINE)}</button>
+            )}
             {me.jailCards.length > 0 && <button className="btn" onClick={act('USE_CARD')}>Use free card</button>}
           </div>
         </>
@@ -231,6 +238,19 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
             Buy for {money(space.price)}
           </button>
           <button className="btn" onClick={act('DECLINE')}>No thanks</button>
+        </div>
+      </>
+    )
+  }
+
+  if (game.phase === 'tax') {
+    return (
+      <>
+        <p className="prompt-title">Income Tax</p>
+        <p className="prompt-sub">Pay a flat $200, or 10% of your total worth (cash + property prices + buildings). Choose before you add it up!</p>
+        <div className="prompt-buttons">
+          <button className="btn primary" onClick={act('TAX_FLAT')}>Pay $200</button>
+          <button className="btn" onClick={act('TAX_PERCENT')}>Pay 10%</button>
         </div>
       </>
     )
@@ -267,6 +287,69 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
     )
   }
   return null
+}
+
+// the auction in the middle of the board: everyone sees it; the bidder whose turn it is raises or drops out
+function Auction({ game, dispatch, openDeed, busy }) {
+  const a = game.auction
+  const who = auctionBidder(game)
+  const bidder = game.players[who]
+  const space = SPACES[a.space]
+  const [amount, setAmount] = useState('')
+  useEffect(() => setAmount(''), [who, a.bid])
+  const human = !bidder.isBot && !busy
+  const isLeader = who === a.leader
+  const bid = (n) => dispatch({ type: 'BID', amount: n, player: who })
+  const raises = [1, 10, 50, 100].map((n) => a.bid + n).filter((n) => n <= bidder.cash)
+  const custom = Number(amount)
+
+  return (
+    <div className="auction">
+      <p className="prompt-title">
+        Auction:{' '}
+        <button className="link" onClick={() => openDeed(a.space)} style={{ '--c': GROUPS[space.group]?.color ?? '#94a3b8' }}>
+          {space.name}
+        </button>
+        <small> (price {money(space.price)})</small>
+      </p>
+      <div className="auction-bid">
+        {a.leader === null ? 'No bids yet' : (<>Top bid <b>{money(a.bid)}</b> by {game.players[a.leader].name}</>)}
+      </div>
+      <div className="auction-bidders">
+        {game.players.map((p, i) =>
+          p.out ? null : (
+            <span key={i} className={`bidder${a.bidders.includes(i) ? '' : ' dropped'}${i === who ? ' now' : ''}${i === a.leader ? ' leading' : ''}`} style={{ '--c': p.color }}>
+              {p.name}
+            </span>
+          ),
+        )}
+      </div>
+      {human && !isLeader ? (
+        <>
+          <p className="prompt-sub"><b>{bidder.name}</b>, raise the bid or drop out (you have {money(bidder.cash)})</p>
+          <div className="prompt-buttons">
+            {raises.map((n) => (
+              <button key={n} className="btn" onClick={() => bid(n)}>{money(n)}</button>
+            ))}
+            <input
+              className="bid-input"
+              type="number"
+              min={a.bid + 1}
+              max={bidder.cash}
+              placeholder="Other"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && custom > a.bid && custom <= bidder.cash && bid(custom)}
+            />
+            <button className="btn primary" disabled={!(custom > a.bid && custom <= bidder.cash)} onClick={() => bid(custom)}>Bid</button>
+            <button className="btn ghost" onClick={() => dispatch({ type: 'AUCTION_PASS', player: who })}>Drop out</button>
+          </div>
+        </>
+      ) : (
+        <p className="thinking">{bidder.name} is deciding<span className="dots" /></p>
+      )}
+    </div>
+  )
 }
 
 function PlayerCard({ game, index, change, onOpen }) {

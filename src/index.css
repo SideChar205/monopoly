@@ -293,3 +293,14 @@ button:disabled { cursor: not-allowed; }
 .space.left .token, .space.right .token { margin-left: -.5em; }
 .space.left .token:first-child, .space.right .token:first-child { margin-left: 0; }
 .space-name { word-break: normal; overflow-wrap: anywhere; hyphens: auto; }
+
+/* ================= Auction ================= */
+.auction { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.auction-bid { font-size: 16px; color: #334155; }
+.auction-bid b { font-size: 22px; color: #065f46; }
+.auction-bidders { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.bidder { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 800; color: #fff; background: var(--c); box-shadow: 0 2px 0 rgba(0, 0, 0, .2); }
+.bidder.dropped { opacity: .3; text-decoration: line-through; }
+.bidder.now { outline: 3px solid #fff; box-shadow: 0 0 0 5px var(--c); }
+.bidder.leading::before { content: '★ '; }
+.bid-input { width: 90px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-weight: 700; color: var(--ink); background: #fff; }

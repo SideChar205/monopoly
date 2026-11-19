@@ -4,11 +4,15 @@
 //   roll  - the current player rolls (or, in jail, pays the fine / uses a card)
 //   buy   - they landed on a property nobody owns: BUY or DECLINE
 //   end   - nothing left to do this turn: END_TURN (or build, mortgage...)
-//   debt  - they owe more than they have: sell buildings / mortgage, then PAY_DEBT, or BANKRUPT
-//   over  - the game has ended
+//   tax     - Income Tax: TAX_FLAT ($200) or TAX_PERCENT (10% of total worth), chosen before adding it up
+//   auction - a property is being auctioned: the bidder whose turn it is sends BID or AUCTION_PASS
+//   debt    - they owe more than they have: sell buildings / mortgage, then PAY_DEBT, or BANKRUPT
+//   over    - the game has ended
 //
-// Actions: NEW, ROLL, PAY_FINE, USE_CARD, BUY, DECLINE, END_TURN,
-//          BUILD, SELL, MORTGAGE, UNMORTGAGE, PAY_DEBT, BANKRUPT, END_GAME
+// Actions: NEW, ROLL, PAY_FINE, USE_CARD, BUY, DECLINE, TAX_FLAT, TAX_PERCENT, BID, AUCTION_PASS, END_TURN,
+//          BUILD, SELL, MORTGAGE, UNMORTGAGE (any player, any time), PAY_DEBT, BANKRUPT, END_GAME
+//
+// Rules follow the Parker Brothers rulebook (2004/2007 edition).
 
 import {
   SPACES, GROUPS, JAIL, START_SALARY, JAIL_FINE, STARTING_CASH, HOUSES_IN_BANK, HOTELS_IN_BANK,
@@ -76,6 +80,14 @@ export function netWorth(s, p) {
   return total
 }
 
+// "total worth" as the rulebook defines it for Income Tax: cash + printed price of every property
+// (mortgaged or not) + the cost of every building
+export function totalWorth(s, p) {
+  let total = s.players[p].cash
+  for (const i of propertiesOf(s, p)) total += SPACES[i].price + s.houses[i] * houseCost(i)
+  return total
+}
+
 export function canBuild(s, p, i) {
   const space = SPACES[i]
   if (space.type !== 'street' || s.owners[i] !== p) return false
@@ -105,8 +117,10 @@ export function canMortgage(s, p, i) {
 
 export const canUnmortgage = (s, p, i) => s.owners[i] === p && s.mortgaged[i] && s.players[p].cash >= unmortgageCost(SPACES[i])
 
-// may the current player manage their properties right now?
-export const canManage = (s) => ['roll', 'end', 'debt'].includes(s.phase)
+// building, selling and mortgaging are allowed at any time (rulebook), by any player still in the game.
+// A player who owes money can only raise it (sell / mortgage), not spend it.
+export const canManage = (s, p = s.current) => s.phase !== 'over' && !!s.players[p] && !s.players[p].out
+const isDebtor = (s, p) => s.phase === 'debt' && s.debt?.player === p
 
 // ---------------- helpers that change the state ----------------
 
@@ -242,6 +256,10 @@ function landOn(s, p, special = null) {
     case 'gotojail':
       return sendToJail(s, p)
     case 'tax':
+      if (space.choice) {
+        s.phase = 'tax' // Income Tax: the player chooses how to pay
+        return
+      }
       addLog(s, `${player.name} pays ${money(space.amount)} ${space.name}`)
       return void charge(s, p, space.amount, null, space.name)
     case 'fortune':
@@ -292,17 +310,29 @@ function bankrupt(s, p, to) {
     s.houses[i] = 0
   }
   if (creditor !== null) {
-    s.players[creditor].cash += player.cash + fromBuildings
-    for (const i of propertiesOf(s, p)) s.owners[i] = creditor
-    s.players[creditor].jailCards.push(...player.jailCards)
-    addLog(s, `${player.name} is bankrupt! Everything goes to ${s.players[creditor].name}`)
-  } else {
+    const heir = s.players[creditor]
+    heir.cash += player.cash + fromBuildings
+    let interest = 0
     for (const i of propertiesOf(s, p)) {
+      s.owners[i] = creditor
+      if (s.mortgaged[i]) interest += Math.ceil(mortgageValue(SPACES[i]) * 0.1) // rulebook: 10% interest right away
+    }
+    heir.jailCards.push(...player.jailCards)
+    addLog(s, `${player.name} is bankrupt! Everything goes to ${heir.name}`)
+    if (interest) {
+      const paid = Math.min(interest, heir.cash)
+      heir.cash -= paid
+      addLog(s, `${heir.name} pays ${money(paid)} interest on the mortgaged properties`)
+    }
+  } else {
+    // rulebook: the bank auctions everything it takes (buildings excepted)
+    s.auctionQueue = propertiesOf(s, p)
+    for (const i of s.auctionQueue) {
       s.owners[i] = null
       s.mortgaged[i] = false
     }
     for (const c of player.jailCards) s.decks[c.deck].push(c.index)
-    addLog(s, `${player.name} is bankrupt! Their properties go back to the bank`)
+    addLog(s, `${player.name} is bankrupt! The bank will auction their properties`)
   }
   player.jailCards = []
   player.cash = 0
@@ -324,6 +354,46 @@ function endGame(s, winner, reason) {
   addLog(s, `${s.players[winner].name} wins! (${reason})`)
 }
 
+// ---------------- auctions ----------------
+// Everyone still playing can bid (including whoever declined to buy), starting at any amount.
+// Bidders take turns: raise the bid or drop out. The last bidder left wins and pays the bank.
+
+function startAuction(s, space, then) {
+  // bidding goes round the table starting with the player after the current one
+  const order = []
+  for (let k = 1; k <= s.players.length; k++) {
+    const i = (s.current + k) % s.players.length
+    if (!s.players[i].out) order.push(i)
+  }
+  s.auction = { space, bid: 0, leader: null, bidders: order, turn: 0, then, id: ++s.cardId }
+  s.phase = 'auction'
+  addLog(s, `${SPACES[space].name} goes up for auction`)
+}
+
+function endAuction(s) {
+  const a = s.auction
+  if (a.leader !== null) {
+    s.players[a.leader].cash -= a.bid
+    s.owners[a.space] = a.leader
+    s.lastBuy = { player: a.leader, space: a.space, id: ++s.cardId }
+    addLog(s, `${s.players[a.leader].name} wins the auction for ${SPACES[a.space].name} at ${money(a.bid)}`)
+  } else {
+    addLog(s, `Nobody bids on ${SPACES[a.space].name}`)
+  }
+  s.auction = null
+  if (a.then.kind === 'finish') {
+    s.phase = 'resolving'
+    finish(s)
+  } else if (s.auctionQueue?.length) {
+    startAuction(s, s.auctionQueue.shift(), a.then)
+  } else {
+    s.auctionQueue = null
+    startTurnOf(s, nextActive(s, a.then.after))
+  }
+}
+
+export const auctionBidder = (s) => (s.auction ? s.auction.bidders[s.auction.turn] : null)
+
 function startTurnOf(s, p) {
   s.current = p
   s.phase = 'roll'
@@ -335,7 +405,21 @@ function startTurnOf(s, p) {
 
 // ---------------- new game ----------------
 
+// rulebook: everyone rolls, the highest total goes first (ties roll again)
+function rollForOrder(seats) {
+  let contenders = seats.map((_, i) => i)
+  const log = []
+  while (contenders.length > 1) {
+    const rolls = contenders.map((i) => ({ i, total: rollDie() + rollDie() }))
+    const best = Math.max(...rolls.map((r) => r.total))
+    log.push(rolls.map((r) => `${seats[r.i].name} ${r.total}`).join(', '))
+    contenders = rolls.filter((r) => r.total === best).map((r) => r.i)
+  }
+  return { first: contenders[0] ?? 0, log }
+}
+
 export function newGame({ seats, startingCash = STARTING_CASH }) {
+  const order = rollForOrder(seats)
   return {
     players: seats.map((seat, i) => ({
       name: seat.name,
@@ -354,7 +438,7 @@ export function newGame({ seats, startingCash = STARTING_CASH }) {
     mortgaged: SPACES.map(() => false),
     bank: { houses: HOUSES_IN_BANK, hotels: HOTELS_IN_BANK },
     decks: { fortune: shuffled(DECKS.fortune.length), fund: shuffled(DECKS.fund.length) },
-    current: 0,
+    current: order.first,
     phase: 'roll',
     dice: null,
     rollId: 0,
@@ -368,7 +452,11 @@ export function newGame({ seats, startingCash = STARTING_CASH }) {
     moveId: 0,
     cardId: 0,
     turn: 1,
-    log: ['Game started. Good luck!'],
+    auction: null,
+    auctionQueue: null,
+    log: seats.length
+      ? [`${seats[order.first].name} rolled highest and goes first`, ...order.log.reverse().map((l) => `Rolling for first turn: ${l}`)]
+      : [],
     winner: null,
     standings: null,
     endReason: null,
@@ -434,7 +522,8 @@ export function gameReducer(state, action) {
     }
 
     case 'PAY_FINE':
-      if (s.phase !== 'roll' || !player.inJail || player.cash < JAIL_FINE) return state
+      // the fine can be paid before rolling on the first or second try; on the third you must roll
+      if (s.phase !== 'roll' || !player.inJail || player.jailTurns >= 2 || player.cash < JAIL_FINE) return state
       player.cash -= JAIL_FINE
       player.inJail = false
       player.jailTurns = 0
@@ -467,9 +556,47 @@ export function gameReducer(state, action) {
     case 'DECLINE':
       if (s.phase !== 'buy') return state
       addLog(s, `${player.name} doesn't buy ${SPACES[player.pos].name}`)
-      s.phase = 'resolving'
-      finish(s)
+      startAuction(s, player.pos, { kind: 'finish' })
       return s
+
+    case 'TAX_FLAT':
+    case 'TAX_PERCENT': {
+      if (s.phase !== 'tax') return state
+      const amount = action.type === 'TAX_FLAT' ? 200 : Math.round(totalWorth(s, p) * 0.1)
+      addLog(s, `${player.name} pays ${money(amount)} Income Tax${action.type === 'TAX_PERCENT' ? ' (10% of their worth)' : ''}`)
+      s.phase = 'resolving'
+      if (charge(s, p, amount, null, 'Income Tax')) finish(s)
+      return s
+    }
+
+    case 'BID': {
+      const a = s.auction
+      const who = auctionBidder(s)
+      if (s.phase !== 'auction' || (action.player !== undefined && action.player !== who)) return state
+      const amount = Math.floor(action.amount)
+      if (!(amount > a.bid) || amount > s.players[who].cash) return state
+      a.bid = amount
+      a.leader = who
+      addLog(s, `${s.players[who].name} bids ${money(amount)}`)
+      a.turn = (a.turn + 1) % a.bidders.length
+      if (a.bidders.length === 1) endAuction(s)
+      return s
+    }
+
+    case 'AUCTION_PASS': {
+      const a = s.auction
+      const who = auctionBidder(s)
+      if (s.phase !== 'auction' || (action.player !== undefined && action.player !== who)) return state
+      if (who === a.leader) return state // the leader waits for the others
+      a.bidders.splice(a.turn, 1)
+      addLog(s, `${s.players[who].name} drops out of the auction`)
+      if (a.bidders.length === 0 || (a.bidders.length === 1 && a.leader === a.bidders[0])) {
+        endAuction(s)
+        return s
+      }
+      a.turn %= a.bidders.length
+      return s
+    }
 
     case 'END_TURN':
       if (s.phase !== 'end') return state
@@ -478,46 +605,50 @@ export function gameReducer(state, action) {
 
     case 'BUILD': {
       const i = action.space
-      if (!canManage(s) || s.phase === 'debt' || !canBuild(s, p, i)) return state
-      player.cash -= houseCost(i)
+      const who = action.player ?? p
+      if (!canManage(s, who) || isDebtor(s, who) || !canBuild(s, who, i)) return state
+      s.players[who].cash -= houseCost(i)
       if (s.houses[i] === 4) {
         s.bank.hotels -= 1
         s.bank.houses += 4
       } else s.bank.houses -= 1
       s.houses[i] += 1
       s.lastBuild = { space: i, id: ++s.cardId }
-      addLog(s, `${player.name} builds ${s.houses[i] === 5 ? 'a hotel' : 'a house'} on ${SPACES[i].name}`)
+      addLog(s, `${s.players[who].name} builds ${s.houses[i] === 5 ? 'a hotel' : 'a house'} on ${SPACES[i].name}`)
       return s
     }
 
     case 'SELL': {
       const i = action.space
-      if (!canManage(s) || !canSell(s, p, i)) return state
+      const who = action.player ?? p
+      if (!canManage(s, who) || !canSell(s, who, i)) return state
       if (s.houses[i] === 5) {
         s.bank.hotels += 1
         s.bank.houses -= 4
       } else s.bank.houses += 1
       s.houses[i] -= 1
-      player.cash += houseCost(i) / 2
-      addLog(s, `${player.name} sells a building on ${SPACES[i].name} for ${money(houseCost(i) / 2)}`)
+      s.players[who].cash += houseCost(i) / 2
+      addLog(s, `${s.players[who].name} sells a building on ${SPACES[i].name} for ${money(houseCost(i) / 2)}`)
       return s
     }
 
     case 'MORTGAGE': {
       const i = action.space
-      if (!canManage(s) || !canMortgage(s, p, i)) return state
+      const who = action.player ?? p
+      if (!canManage(s, who) || !canMortgage(s, who, i)) return state
       s.mortgaged[i] = true
-      player.cash += mortgageValue(SPACES[i])
-      addLog(s, `${player.name} mortgages ${SPACES[i].name} for ${money(mortgageValue(SPACES[i]))}`)
+      s.players[who].cash += mortgageValue(SPACES[i])
+      addLog(s, `${s.players[who].name} mortgages ${SPACES[i].name} for ${money(mortgageValue(SPACES[i]))}`)
       return s
     }
 
     case 'UNMORTGAGE': {
       const i = action.space
-      if (!canManage(s) || s.phase === 'debt' || !canUnmortgage(s, p, i)) return state
+      const who = action.player ?? p
+      if (!canManage(s, who) || isDebtor(s, who) || !canUnmortgage(s, who, i)) return state
       s.mortgaged[i] = false
-      player.cash -= unmortgageCost(SPACES[i])
-      addLog(s, `${player.name} pays off the mortgage on ${SPACES[i].name}`)
+      s.players[who].cash -= unmortgageCost(SPACES[i])
+      addLog(s, `${s.players[who].name} pays off the mortgage on ${SPACES[i].name}`)
       return s
     }
 
@@ -536,7 +667,12 @@ export function gameReducer(state, action) {
     case 'BANKRUPT': {
       if (s.phase !== 'debt') return state
       bankrupt(s, p, s.debt.to)
-      if (s.phase !== 'over') startTurnOf(s, nextActive(s, p))
+      if (s.phase === 'over') return s
+      if (s.auctionQueue?.length) startAuction(s, s.auctionQueue.shift(), { kind: 'queue', after: p })
+      else {
+        s.auctionQueue = null
+        startTurnOf(s, nextActive(s, p))
+      }
       return s
     }
 

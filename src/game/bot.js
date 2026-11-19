@@ -1,6 +1,6 @@
 // What a computer player does. Returns one action at a time (the game asks again after each one).
 import { SPACES, GROUPS, JAIL_FINE, isOwnable, groupMembers, unmortgageCost } from './board.js'
-import { canBuild, canSell, canMortgage, canUnmortgage, propertiesOf, houseCost, ownsGroup } from './rules.js'
+import { canBuild, canSell, canMortgage, canUnmortgage, propertiesOf, houseCost, ownsGroup, totalWorth, auctionBidder } from './rules.js'
 
 const RESERVE = 150 // cash a bot likes to keep for rent
 
@@ -38,9 +38,36 @@ function raiseMoney(s, p) {
   return null
 }
 
+// the most a bot will pay for space i at auction
+function auctionLimit(s, p, i) {
+  const space = SPACES[i]
+  let value = space.price
+  if (space.type === 'street') value *= [0.8, 1.2, 1.6][groupValue(s, p, i)]
+  else if (space.type === 'station') value *= 0.9 + 0.15 * s.owners.filter((o, j) => o === p && SPACES[j].type === 'station').length
+  else value *= 0.7
+  return Math.min(Math.round(value), s.players[p].cash - 80)
+}
+
+// which player a bot move is for (in an auction, it's whoever's turn it is to bid)
+export const botActor = (s) => (s.phase === 'auction' ? auctionBidder(s) : s.current)
+
 export function botMove(s) {
+  if (s.phase === 'auction') {
+    const p = auctionBidder(s)
+    const a = s.auction
+    const limit = auctionLimit(s, p, a.space)
+    const next = a.bid === 0 ? Math.max(10, Math.round((SPACES[a.space].price * 0.4) / 10) * 10) : a.bid + (a.bid < 100 ? 10 : 20)
+    if (next <= limit) return { type: 'BID', amount: next, player: p }
+    return { type: 'AUCTION_PASS', player: p }
+  }
+
   const p = s.current
   const me = s.players[p]
+
+  if (s.phase === 'tax') {
+    // a quick estimate: a bot with a small fortune pays 10%, otherwise the flat $200
+    return { type: totalWorth(s, p) < 2000 ? 'TAX_PERCENT' : 'TAX_FLAT' }
+  }
 
   if (s.phase === 'debt') {
     if (me.cash >= s.debt.amount) return { type: 'PAY_DEBT' }
@@ -70,7 +97,7 @@ export function botMove(s) {
       if (me.jailCards.length) return { type: 'USE_CARD' }
       // early on (lots left to buy) it pays to get out; later, jail is a safe place to wait
       const unowned = SPACES.filter((sp, i) => isOwnable(sp) && s.owners[i] === null).length
-      if (unowned > 8 && me.cash >= JAIL_FINE + RESERVE) return { type: 'PAY_FINE' }
+      if (unowned > 8 && me.jailTurns < 2 && me.cash >= JAIL_FINE + RESERVE) return { type: 'PAY_FINE' }
     }
     return { type: 'ROLL' }
   }

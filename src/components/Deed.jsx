@@ -4,21 +4,24 @@ import { canBuild, canSell, canMortgage, canUnmortgage, canManage, ownsGroup, ho
 const money = (n) => `$${n.toLocaleString('en-US')}`
 
 // The title card for a property: its rents, who owns it, and (for the owner, on their turn) what they can do with it
-export default function Deed({ index, game, dispatch, viewer, onClose }) {
+export default function Deed({ index, game, dispatch, onClose }) {
   const space = SPACES[index]
   const owner = game.owners[index]
   const color = space.group ? GROUPS[space.group].color : '#334155'
-  const mine = owner !== null && owner === viewer && viewer === game.current && canManage(game)
+  // the owner can build, sell and mortgage at any time (rulebook), as long as they're a person (bots manage themselves)
+  const viewer = owner
+  const mine = owner !== null && !game.players[owner].isBot && canManage(game, owner)
+  const owes = game.phase === 'debt' && game.debt?.player === owner // can raise money, not spend it
   const h = game.houses[index]
 
-  const act = (type) => dispatch({ type, space: index })
+  const act = (type) => dispatch({ type, space: index, player: owner })
 
   // why a button is disabled (shown on hover)
   const buildWhy = () => {
     if (!ownsGroup(game, viewer, space.group)) return 'Own every street of this color first'
     if (groupMembers(space.group).some((j) => game.mortgaged[j])) return 'Pay off the mortgages in this group first'
     if (h >= 5) return 'Already has a hotel'
-    if (game.phase === 'debt') return "You can't build while you owe money"
+    if (owes) return "You can't build while you owe money"
     if (game.players[viewer].cash < houseCost(index)) return 'Not enough money'
     return 'Build evenly: the other streets in this group need a house first'
   }
@@ -96,7 +99,7 @@ export default function Deed({ index, game, dispatch, viewer, onClose }) {
             <div className="deed-actions">
               {space.type === 'street' && (
                 <>
-                  <button className="btn" disabled={!canBuild(game, viewer, index) || game.phase === 'debt'} title={canBuild(game, viewer, index) ? '' : buildWhy()} onClick={() => act('BUILD')}>
+                  <button className="btn" disabled={!canBuild(game, viewer, index) || owes} title={canBuild(game, viewer, index) ? '' : buildWhy()} onClick={() => act('BUILD')}>
                     {h === 4 ? 'Build hotel' : 'Build house'} ({money(houseCost(index))})
                   </button>
                   <button className="btn ghost" disabled={!canSell(game, viewer, index)} onClick={() => act('SELL')}>
@@ -105,7 +108,7 @@ export default function Deed({ index, game, dispatch, viewer, onClose }) {
                 </>
               )}
               {game.mortgaged[index] ? (
-                <button className="btn ghost" disabled={!canUnmortgage(game, viewer, index) || game.phase === 'debt'} onClick={() => act('UNMORTGAGE')}>
+                <button className="btn ghost" disabled={!canUnmortgage(game, viewer, index) || owes} onClick={() => act('UNMORTGAGE')}>
                   Pay off mortgage ({money(unmortgageCost(space))})
                 </button>
               ) : (

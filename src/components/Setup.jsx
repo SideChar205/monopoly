@@ -23,6 +23,8 @@ export default function Setup({ initial, onStart }) {
   const [seats, setSeats] = useState(() => initial?.seats ?? defaultSeats())
   const [cash, setCash] = useState(initial?.startingCash ?? STARTING_CASH)
   const [picking, setPicking] = useState(null) // which seat is choosing a piece
+  const [mode, setMode] = useState(initial?.mode ?? 'board') // 'board' (the board game) or 'deal' (the card game)
+  const maxPlayers = mode === 'deal' ? 5 : 6
 
   const setCount = (n) =>
     setSeats((s) => {
@@ -43,13 +45,35 @@ export default function Setup({ initial, onStart }) {
             <span className="logo-house" aria-hidden="true" />
             LANDLORD
           </div>
-          <p>Roll the dice, buy the town, build houses and hotels, and send your rivals broke.</p>
+          <p>{mode === 'deal' ? 'Collect property sets, charge rent and steal deals. First to 3 complete sets wins.' : 'Roll the dice, buy the town, build houses and hotels, and send your rivals broke.'}</p>
         </header>
+
+        <section>
+          <h2>Game</h2>
+          <div className="mode-pick">
+            <button className={`mode-card${mode === 'board' ? ' on' : ''}`} onClick={() => setMode('board')}>
+              <span className="mode-icon">🎲</span>
+              <strong>Board game</strong>
+              <small>The classic board: roll, buy, build, bankrupt</small>
+            </button>
+            <button
+              className={`mode-card${mode === 'deal' ? ' on' : ''}`}
+              onClick={() => {
+                setMode('deal')
+                if (seats.length > 5) setCount(5)
+              }}
+            >
+              <span className="mode-icon">🃏</span>
+              <strong>Deal</strong>
+              <small>The fast card game: 3 property sets to win (2–5 players)</small>
+            </button>
+          </div>
+        </section>
 
         <section>
           <h2>Players</h2>
           <div className="count-row">
-            {[2, 3, 4, 5, 6].map((n) => (
+            {[2, 3, 4, 5, 6].filter((n) => n <= maxPlayers).map((n) => (
               <button key={n} className={`chip${seats.length === n ? ' on' : ''}`} onClick={() => setCount(n)}>
                 {n}
               </button>
@@ -109,6 +133,7 @@ export default function Setup({ initial, onStart }) {
           {humans > 1 && <p className="hint">Pass and play: hand the mouse to whoever's turn it is.</p>}
         </section>
 
+        {mode === 'board' && (
         <section>
           <h2>Starting money</h2>
           <div className="count-row">
@@ -119,14 +144,15 @@ export default function Setup({ initial, onStart }) {
             ))}
           </div>
         </section>
+        )}
 
         <button
           className="start-btn"
-          onClick={() => onStart({ seats: seats.map((s, i) => ({ ...s, name: s.name.trim() || `Player ${i + 1}` })), startingCash: cash })}
+          onClick={() => onStart({ mode, seats: seats.map((s, i) => ({ ...s, color: TOKEN_COLORS[i], name: s.name.trim() || `Player ${i + 1}` })), startingCash: cash })}
         >
           Start game
         </button>
-        <p className="fine-print">Classic rules. Auctions, trading and online play are coming next.</p>
+        <p className="fine-print">{mode === 'deal' ? '106 cards: money, properties, wildcards, rent and action cards.' : 'Classic rules from the official rulebook.'}</p>
       </div>
     </div>
   )

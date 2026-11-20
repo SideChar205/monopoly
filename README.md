@@ -67,6 +67,19 @@ Follows the Parker Brothers rulebook (2004/2007 edition, Hasbro instruction shee
 Not in yet: trading between players (including selling Get Out of Jail Free cards), house auctions during a building
 shortage, and the optional Speed Die.
 
+## Landlord Deal (card game mode)
+
+Pick **Deal** on the setup screen. It's a fast card game for 2–5 players (you plus bots) with a 106-card deck.
+
+- On your turn, draw 2 cards (or 5 if your hand is empty), then play up to 3 cards.
+- Each card can be banked as money, laid down as property, or played as an action.
+- You can hold at most 7 cards at the end of your turn. Any extra cards are discarded.
+- Debts are paid from your bank and table, and no change is given. Property cards can't be banked.
+- Actions: Deal Breaker, Just Say No, Pass Go, Forced Deal, Sly Deal, Debt Collector, Birthday, Double the Rent, House, Hotel. Rent cards come in pairs and wild versions.
+- The first player to complete 3 full property sets in different colours wins.
+
+The code is in `src/deal/`: `cards.js` (the deck), `rules.js` (the engine), `bot.js`, `DealGame.jsx`, `DealCard.jsx` and `deal.css`.
+
 ## Code
 
 | File | What it does |

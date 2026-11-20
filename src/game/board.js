@@ -8,14 +8,14 @@
 //   start, jail, rest, gotojail, tax, fortune, fund
 
 export const GROUPS = {
-  brown: { color: '#8b5a2b', house: 50, name: 'Brown' },
-  sky: { color: '#7dd3fc', house: 50, name: 'Light blue' },
-  pink: { color: '#e879f9', house: 100, name: 'Pink' },
-  orange: { color: '#fb923c', house: 100, name: 'Orange' },
-  red: { color: '#ef4444', house: 150, name: 'Red' },
-  yellow: { color: '#facc15', house: 150, name: 'Yellow' },
-  green: { color: '#22c55e', house: 200, name: 'Green' },
-  navy: { color: '#2563eb', house: 200, name: 'Dark blue' },
+  brown: { color: '#955436', house: 50, name: 'Brown' },
+  sky: { color: '#aae0fa', house: 50, name: 'Light blue' },
+  pink: { color: '#d93a96', house: 100, name: 'Pink' },
+  orange: { color: '#f7941d', house: 100, name: 'Orange' },
+  red: { color: '#ed1b24', house: 150, name: 'Red' },
+  yellow: { color: '#fef200', house: 150, name: 'Yellow' },
+  green: { color: '#1fb25a', house: 200, name: 'Green' },
+  navy: { color: '#0072bb', house: 200, name: 'Dark blue' },
 }
 
 const street = (name, group, price, rent) => ({ type: 'street', name, group, price, rent })

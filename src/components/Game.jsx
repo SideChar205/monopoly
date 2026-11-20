@@ -3,64 +3,124 @@ import { SPACES, GROUPS, JAIL_FINE, groupMembers } from '../game/board.js'
 import { activePlayers, netWorth, propertiesOf, auctionBidder } from '../game/rules.js'
 import { botMove, botActor } from '../game/bot.js'
 import Board, { Token } from './Board.jsx'
-import Dice from './Dice.jsx'
 import Deed from './Deed.jsx'
+import ScreenDice from './ScreenDice.jsx'
+import { HoldingsStrip, PlayerSheet } from './Holdings.jsx'
 
 const money = (n) => `$${n.toLocaleString('en-US')}`
+
+// where each player sits around the board, going round from you (bottom) in turn order
+const SEAT_LAYOUTS = {
+  1: ['bottom'],
+  2: ['bottom', 'top'],
+  3: ['bottom', 'left', 'right'],
+  4: ['bottom', 'left', 'top', 'right'],
+  5: ['bottom', 'left', 'top-left', 'top-right', 'right'],
+  6: ['bottom', 'left', 'top-left', 'top-right', 'right', 'bottom-right'],
+}
 const HOP_MS = 150 // time per space when a token walks
-const CARD_MS = 2800 // how long a drawn card stays up
+const DICE_MS = 1250 // the dice tumble and settle before anything else happens
+const CARD_MS = 3200 // how long a drawn card stays up (or until you click it)
 
-// Tokens walk space by space. The game state jumps straight to the end position,
-// so the board plays each move of the last action one after another.
-function useTokenPositions(game) {
-  const [shown, setShown] = useState(() => game.players.map((p) => p.pos))
-  const [walking, setWalking] = useState(false)
-  const pos = useRef(game.players.map((p) => p.pos)) // where each token is drawn right now
-  const seen = useRef(game.moveId)
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// The director: the game rules jump straight to the result of an action, but the screen plays it out
+// one step at a time, so you can follow it:
+//   1. the dice tumble and land            (only the dice change)
+//   2. the piece walks to its space
+//   3. a card comes off its stack          (if the space draws one; the piece waits for it)
+//   4. any move the card causes
+//   5. then everything else updates: money, the log, who owns what, your buttons
+// While that plays, `busy` is true: your buttons wait and so do the bots.
+function useDirector(game) {
+  const [view, setView] = useState(game) // the game as the screen shows it right now
+  const [positions, setPositions] = useState(() => game.players.map((p) => p.pos))
+  const [dice, setDice] = useState({ values: game.dice, key: game.rollId }) // the last roll stays on the board
+  const [card, setCard] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const pos = useRef(game.players.map((p) => p.pos))
+  const shown = useRef(game)
   const queue = useRef([])
-  const timer = useRef(null)
   const running = useRef(false)
+  const closeCardNow = useRef(null)
 
-  useEffect(() => {
-    // a new game: put everyone on Start without walking
-    if (game.moveId < seen.current) {
-      clearTimeout(timer.current)
-      queue.current = []
-      running.current = false
-      seen.current = game.moveId
-      pos.current = game.players.map((p) => p.pos)
-      setShown(pos.current)
-      setWalking(false)
+  const setPos = (p, at) => {
+    pos.current = pos.current.map((x, i) => (i === p ? at : x))
+    setPositions(pos.current)
+  }
+
+  async function walk(moves) {
+    for (const move of moves) {
+      if (move.kind === 'jump') {
+        await wait(250)
+        setPos(move.player, move.to)
+        await wait(450)
+        continue
+      }
+      while (pos.current[move.player] !== move.to) {
+        const at = pos.current[move.player]
+        setPos(move.player, move.kind === 'back' ? (at + 39) % 40 : (at + 1) % 40)
+        await wait(HOP_MS)
+      }
+    }
+  }
+
+  async function play(next) {
+    const prev = shown.current
+    // a new game: show it straight away
+    if (next.moveId < prev.moveId || next.rollId < prev.rollId) {
+      pos.current = next.players.map((p) => p.pos)
+      setPositions(pos.current)
+      setDice({ values: next.dice, key: next.rollId })
+      setCard(null)
+      shown.current = next
+      setView(next)
       return
     }
-    if (game.moveId === seen.current) return
-    seen.current = game.moveId
-    queue.current.push(...game.moves)
-    if (running.current) return
+    const rolled = next.rollId !== prev.rollId
+    const newCard = next.lastCard && next.lastCard.id !== prev.lastCard?.id ? next.lastCard : null
+    const moves = next.moveId !== prev.moveId ? next.moves : []
 
-    const step = () => {
-      const move = queue.current[0]
-      if (!move) {
-        running.current = false
-        setWalking(false)
-        return
-      }
-      running.current = true
-      setWalking(true)
-      const at = pos.current[move.player]
-      let next
-      if (move.kind === 'jump' || at === move.to) next = move.to
-      else next = move.kind === 'back' ? (at + 39) % 40 : (at + 1) % 40
-      pos.current = pos.current.map((x, i) => (i === move.player ? next : x))
-      setShown(pos.current)
-      if (next === move.to) queue.current.shift()
-      timer.current = setTimeout(step, move.kind === 'jump' ? 450 : HOP_MS)
+    if (rolled) {
+      setDice({ values: next.dice, key: next.rollId })
+      await wait(DICE_MS)
     }
-    step()
-  }, [game.moveId]) // eslint-disable-line react-hooks/exhaustive-deps
+    // walk up to the card space, show the card, then make the card's own move
+    let cut = moves.length
+    if (newCard) {
+      const c = moves.findIndex((m) => SPACES[m.to].type === 'fortune' || SPACES[m.to].type === 'fund')
+      cut = c >= 0 ? c + 1 : 0
+    }
+    await walk(moves.slice(0, cut))
+    if (newCard) {
+      await wait(200)
+      setCard(newCard)
+      await new Promise((resolve) => {
+        closeCardNow.current = resolve
+        setTimeout(resolve, CARD_MS)
+      })
+      closeCardNow.current = null
+      setCard(null)
+      await wait(300)
+    }
+    await walk(moves.slice(cut))
+    shown.current = next
+    setView(next)
+  }
 
-  useEffect(() => () => clearTimeout(timer.current), [])
-  return { positions: shown, walking }
+  useEffect(() => {
+    queue.current.push(game)
+    if (running.current) return
+    running.current = true
+    setBusy(true)
+    ;(async () => {
+      while (queue.current.length) await play(queue.current.shift())
+      running.current = false
+      setBusy(false)
+    })()
+  }, [game]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { view, positions, dice, card, busy, closeCard: () => closeCardNow.current?.() }
 }
 
 // a +$/-$ bubble next to a player's cash whenever it changes
@@ -79,32 +139,39 @@ function useCashChanges(players) {
   return changes
 }
 
-export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
-  const { positions, walking } = useTokenPositions(game)
+export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
+  // `latest` is the real game; `game` is what the screen shows, which catches up step by step (see useDirector)
+  const { view: game, positions, dice, card, busy, closeCard } = useDirector(latest)
   const cashChanges = useCashChanges(game.players)
   const [deed, setDeed] = useState(null)
-  const [card, setCard] = useState(null)
+  const [sheet, setSheet] = useState(null) // which player's property window is open
   const [confirmQuit, setConfirmQuit] = useState(null) // 'bankrupt' | 'end' | null
-  const lastCardId = useRef(game.lastCard?.id ?? 0)
 
   const me = game.players[game.current]
   // whose move it is: in an auction, whoever's turn it is to bid
   const actor = game.players[botActor(game)] ?? me
   const myTurn = !actor.isBot && game.phase !== 'over'
-  const busy = walking || card !== null // wait for the token / card before the next step
+  const canRoll = myTurn && !busy && game.phase === 'roll'
+  const trayRef = useRef(null)
+  const areaRef = useRef(null)
 
-  // show a drawn card in the middle of the board for a moment
+  // who sits at the bottom (you): the human whose turn it is; between turns, the last human who played
+  const anchorRef = useRef(Math.max(0, game.players.findIndex((p) => !p.isBot)))
+  if (!me.isBot) anchorRef.current = game.current
+  const seatOrder = game.players.map((_, k) => (anchorRef.current + k) % game.players.length)
+  const roll = () => canRoll && dispatch({ type: 'ROLL' })
+
+  // space bar rolls the dice too
   useEffect(() => {
-    if (!game.lastCard || game.lastCard.id === lastCardId.current) return
-    lastCardId.current = game.lastCard.id
-    const show = setTimeout(() => setCard(game.lastCard), walking ? 400 : 0)
-    return () => clearTimeout(show)
-  }, [game.lastCard]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!card) return
-    const t = setTimeout(() => setCard(null), CARD_MS)
-    return () => clearTimeout(t)
-  }, [card])
+    const onKey = (e) => {
+      if (e.code === 'Space' && canRoll && !['INPUT', 'BUTTON', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+        e.preventDefault()
+        dispatch({ type: 'ROLL' })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [canRoll, dispatch])
 
   // bots play by themselves, one action at a time
   useEffect(() => {
@@ -115,6 +182,7 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
     const t = setTimeout(() => dispatch(action), quick ? 350 : 700)
     return () => clearTimeout(t)
   }, [game, busy, actor.isBot, dispatch])
+  // (bots read `game`, which is the real game whenever the screen isn't busy)
 
   useEffect(() => setConfirmQuit(null), [game.current, game.phase])
 
@@ -122,44 +190,37 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
 
   return (
     <div className="game-page">
-      <main className="table-area">
-        <Board game={game} positions={positions} onOpen={setDeed}>
-          <div className="logo small">
-            <span className="logo-house" aria-hidden="true" />
-            LANDLORD
+      <main className="table-area" ref={areaRef}>
+        {/* the board lies on the table, seen at an angle: the dice roll on it and the cards come off its piles */}
+        <div className="scene">
+          <div className="board-tilt">
+            <Board
+              game={game}
+              positions={positions}
+              onOpen={setDeed}
+              card={card}
+              onCardClose={closeCard}
+              rollLabel={canRoll ? 'roll' : null}
+              trayRef={trayRef}
+            />
           </div>
-
-          <Dice key={game.rollId} dice={game.dice} />
-
-          <div className="prompt">
-            {game.phase === 'over' ? null : game.phase === 'auction' ? (
-              <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} />
-            ) : !myTurn ? (
-              <p className="thinking">
-                <Token player={me} index={game.current} /> {me.name} is thinking<span className="dots" />
-              </p>
-            ) : busy ? (
-              <p className="thinking">…</p>
-            ) : (
-              <Prompt game={game} dispatch={dispatch} space={space} confirm={confirmQuit} setConfirm={setConfirmQuit} openDeed={setDeed} />
-            )}
+        </div>
+        <ScreenDice key={dice.key} dice={dice.values} seed={dice.key} onRoll={canRoll ? roll : null} trayRef={trayRef} areaRef={areaRef} />
+        {/* the roll button floats flat in front of the dice tray (outside the 3D board, so nothing cuts it) */}
+        {canRoll && (
+          <button className="roll-btn2" onClick={roll}>
+            <span className="roll-icon">🎲</span>
+            <span className="roll-text">
+              {me.inJail ? 'Roll for doubles' : 'Roll dice'}
+            </span>
+          </button>
+        )}
+        {/* everyone sits around the board, their deeds and money on the table in front of them */}
+        {seatOrder.map((pi, k) => (
+          <div key={pi} className={`seat-spot ${SEAT_LAYOUTS[seatOrder.length][k]}`}>
+            <PlayerCard game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
           </div>
-
-          <ul className="log">
-            {game.log.slice(0, 5).map((line, i) => (
-              <li key={`${game.log.length}-${i}`}>{line}</li>
-            ))}
-          </ul>
-
-          {card && (
-            <button className={`drawn-card ${card.deck}`} onClick={() => setCard(null)} title="Click to close">
-              <small>{card.deck === 'fortune' ? 'Fortune' : 'Town Fund'}</small>
-              <span className="card-icon">{card.deck === 'fortune' ? '?' : '💰'}</span>
-              <p>{card.text}</p>
-              <em>{game.players[card.player].name}</em>
-            </button>
-          )}
-        </Board>
+        ))}
       </main>
 
       <aside className="side">
@@ -176,11 +237,28 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
           </div>
         </div>
 
-        <ul className="players">
-          {game.players.map((p, i) => (
-            <PlayerCard key={i} game={game} index={i} change={cashChanges[i]} onOpen={setDeed} />
-          ))}
-        </ul>
+        {/* what happens next: your buttons, or who we're waiting for */}
+        <div className={`action-panel${myTurn && !busy && game.phase !== 'auction' ? ' yours' : ''}`}>
+          <div className="prompt">
+            {game.phase === 'over' ? null : game.phase === 'auction' ? (
+              <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} />
+            ) : !myTurn ? (
+              <p className="thinking">
+                <Token player={me} index={game.current} /> {me.name} is thinking<span className="dots" />
+              </p>
+            ) : busy ? (
+              <p className="thinking">…</p>
+            ) : (
+              <Prompt game={game} dispatch={dispatch} space={space} confirm={confirmQuit} setConfirm={setConfirmQuit} openDeed={setDeed} />
+            )}
+          </div>
+          <ul className="log">
+            {game.log.slice(0, 4).map((line, i) => (
+              <li key={`${game.log.length}-${i}`}>{line}</li>
+            ))}
+          </ul>
+        </div>
+
 
         <div className="bank">
           <span title="Houses left in the bank">🏠 {game.bank.houses}</span>
@@ -189,6 +267,7 @@ export default function Game({ game, dispatch, onPlayAgain, onQuit }) {
         </div>
       </aside>
 
+      {sheet !== null && <PlayerSheet game={game} index={sheet} onOpen={setDeed} onClose={() => setSheet(null)} />}
       {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} onClose={() => setDeed(null)} />}
       {game.phase === 'over' && <GameOver game={game} onPlayAgain={onPlayAgain} onQuit={onQuit} />}
     </div>
@@ -207,8 +286,8 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
         <>
           <p className="prompt-title">You're in jail <small>(try {me.jailTurns + 1} of 3)</small></p>
           {me.jailTurns >= 2 && <p className="prompt-sub">Last try: no doubles means you pay {money(JAIL_FINE)} and move.</p>}
+          <p className="prompt-sub">Roll for doubles with the dice on the board, or:</p>
           <div className="prompt-buttons">
-            <button className="btn primary" onClick={act('ROLL')}>Roll for doubles</button>
             {me.jailTurns < 2 && (
               <button className="btn" disabled={me.cash < JAIL_FINE} onClick={act('PAY_FINE')}>Pay {money(JAIL_FINE)}</button>
             )}
@@ -220,9 +299,7 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
     return (
       <>
         <p className="prompt-title">{game.dice && game.dice[0] === game.dice[1] ? 'Doubles! Roll again' : `${me.name}, your turn`}</p>
-        <div className="prompt-buttons">
-          <button className="btn primary big" onClick={act('ROLL')}>🎲 Roll dice</button>
-        </div>
+        <p className="prompt-sub roll-hint">🎲 Roll the dice in the middle of the board <small>(or press Space)</small></p>
       </>
     )
   }
@@ -352,27 +429,20 @@ function Auction({ game, dispatch, openDeed, busy }) {
   )
 }
 
-function PlayerCard({ game, index, change, onOpen }) {
+function PlayerCard({ game, index, change, onOpen, onSheet, you }) {
   const p = game.players[index]
-  const props = propertiesOf(game, index)
   const isTurn = index === game.current && game.phase !== 'over'
-  // the player's properties, grouped by color in board order
-  const groups = []
-  for (const i of props) {
-    const key = SPACES[i].group ?? SPACES[i].type
-    const g = groups.find((x) => x.key === key)
-    if (g) g.items.push(i)
-    else groups.push({ key, items: [i] })
-  }
-
   return (
-    <li className={`player${isTurn ? ' turn' : ''}${p.out ? ' out' : ''}`} style={{ '--c': p.color }}>
-      <div className="player-row">
+    <div className={`player seat${isTurn ? ' turn' : ''}${p.out ? ' out' : ''}`} style={{ '--c': p.color }}>
+      <button className="player-row" onClick={onSheet} title={`See everything ${p.name} owns`}>
         <Token player={p} index={index} />
         <div className="player-name">
-          <strong>{p.name}</strong>
+          <strong>
+            {p.name}
+            {you && <span className="you-tag">YOU</span>}
+          </strong>
           <small>
-            {p.out ? 'Bankrupt' : p.inJail ? 'In jail' : p.isBot ? 'Bot' : 'Human'}
+            {p.out ? 'Bankrupt' : p.inJail ? 'In jail' : isTurn ? (p.isBot ? 'Thinking…' : 'Playing') : p.isBot ? 'Bot' : 'Human'}
             {p.jailCards.length > 0 && <span className="jail-card" title="Get Out of Jail Free card"> · 🔓×{p.jailCards.length}</span>}
           </small>
         </div>
@@ -384,28 +454,9 @@ function PlayerCard({ game, index, change, onOpen }) {
             </span>
           )}
         </div>
-      </div>
-      {props.length > 0 && (
-        <div className="holdings">
-          {groups.map((g) => (
-            <div key={g.key} className="holding-group">
-              {g.items.map((i) => (
-                <button
-                  key={i}
-                  className={`holding${game.mortgaged[i] ? ' mortgaged' : ''}`}
-                  style={{ '--band': SPACES[i].group ? GROUPS[SPACES[i].group].color : '#94a3b8' }}
-                  title={`${SPACES[i].name}${game.mortgaged[i] ? ' (mortgaged)' : ''}${game.houses[i] ? ` · ${game.houses[i] === 5 ? 'hotel' : `${game.houses[i]} house${game.houses[i] > 1 ? 's' : ''}`}` : ''}`}
-                  onClick={() => onOpen(i)}
-                >
-                  {SPACES[i].type === 'station' ? '🚂' : SPACES[i].type === 'utility' ? SPACES[i].icon : game.houses[i] === 5 ? 'H' : game.houses[i] || ''}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-      {!p.out && <div className="worth">Worth {money(netWorth(game, index))}</div>}
-    </li>
+      </button>
+      {!p.out && <HoldingsStrip game={game} player={index} onOpen={onOpen} />}
+    </div>
   )
 }
 

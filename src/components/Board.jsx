@@ -1,106 +1,251 @@
 import { SPACES, GROUPS, gridSpot } from '../game/board.js'
+import { PieceIcon, Piece3D } from './Pieces.jsx'
+import { SPACE_ART, UTILITY_ART, TAX_ART, StartArrow, Bars, Chest, Question, HouseModel, HotelModel, Extruded, OwnedModel } from './Art.jsx'
 
 const money = (n) => `$${n}`
 
+// the four corners have their own layouts
+function Corner({ index }) {
+  const space = SPACES[index]
+  if (space.type === 'jail') {
+    return (
+      <>
+        <div className="jail-cell">
+          <Bars />
+          <span className="jail-label">IN JAIL</span>
+        </div>
+        <span className="just">JUST</span>
+        <span className="visiting">VISITING</span>
+      </>
+    )
+  }
+  const Art = SPACE_ART[space.type]
+  return (
+    <>
+      <div className="corner-art">
+        {space.type === 'start' ? (
+          <>
+            <small>Collect $200 salary as you pass</small>
+            <b className="start-word">START</b>
+            <StartArrow />
+          </>
+        ) : (
+          <>
+            {space.type === 'gotojail' && <b>GO TO</b>}
+            {Art && <Art />}
+            <b>{space.type === 'gotojail' ? 'JAIL' : space.name.toUpperCase()}</b>
+            {space.type === 'rest' && <small>Take a rest</small>}
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+function SpaceArt({ space }) {
+  const Art = space.type === 'utility' ? UTILITY_ART[space.name] : space.type === 'tax' ? TAX_ART[space.name] : SPACE_ART[space.type]
+  return Art ? <Art /> : null
+}
+
 // one space on the board
-function Space({ index, game, positions, onOpen }) {
+function Space({ index, game, onOpen }) {
   const space = SPACES[index]
   const spot = gridSpot(index)
   const owner = game.owners[index]
   const houses = game.houses[index]
-  const here = positions.map((pos, p) => (pos === index && !game.players[p].out ? p : -1)).filter((p) => p >= 0)
   const corner = index % 10 === 0
   const ownable = space.price !== undefined
   const color = space.group ? GROUPS[space.group].color : null
 
   return (
     <div
-      className={`space ${spot.side}${corner ? ' corner' : ''} t-${space.type}${game.mortgaged[index] ? ' mortgaged' : ''}${ownable ? ' clickable' : ''}${here.length && index !== 10 ? ' occupied' : ''}`}
+      className={`space ${spot.side}${corner ? ' corner' : ''} t-${space.type}${game.mortgaged[index] ? ' mortgaged' : ''}${ownable ? ' clickable' : ''}`}
       style={{ gridRow: spot.row, gridColumn: spot.col, '--band': color ?? 'transparent', '--owner': owner !== null ? game.players[owner].color : 'transparent' }}
       onClick={ownable ? () => onOpen(index) : undefined}
       title={ownable ? `${space.name}: click for details` : space.name}
     >
-      {color && (
-        <div className="band">
-          {houses > 0 && houses < 5 && Array.from({ length: houses }, (_, k) => <span key={k} className="house" />)}
-          {houses === 5 && <span className="hotel" />}
-        </div>
-      )}
-      <div className="space-body">
-        <SpaceIcon space={space} />
-        <span className="space-name">{space.name}</span>
-        {ownable && <span className="space-price">{game.mortgaged[index] ? 'Mortgaged' : money(space.price)}</span>}
-        {space.type === 'tax' && <span className="space-price">Pay {money(space.amount)}</span>}
-      </div>
-      {owner !== null && <span className="owner-flag" title={`Owned by ${game.players[owner].name}`} />}
-      {index === 10 ? (
-        <>
-          {/* in jail: inside the cell; just visiting: outside it */}
-          <div className="tokens jail-tokens">
-            {here.filter((p) => game.players[p].inJail).map((p) => (
-              <Token key={p} player={game.players[p]} index={p} jailed current={p === game.current} />
-            ))}
-          </div>
-          <div className="visit-tokens">
-            {here.filter((p) => !game.players[p].inJail).map((p) => (
-              <Token key={p} player={game.players[p]} index={p} current={p === game.current} />
-            ))}
-          </div>
-        </>
+      {corner ? (
+        <Corner index={index} />
       ) : (
-        here.length > 0 && (
-          <div className="tokens">
-            {here.map((p) => (
-              <Token key={p} player={game.players[p]} index={p} current={p === game.current} />
-            ))}
+        <>
+          {color && (
+            <div className="band">
+              {houses > 0 && houses < 5 && Array.from({ length: houses }, (_, k) => <span key={k} className="house" />)}
+              {houses === 5 && <span className="hotel" />}
+            </div>
+          )}
+          <div className="space-body">
+            <span className="space-name">{space.name}</span>
+            <SpaceArt space={space} />
+            {ownable && <span className="space-price">{game.mortgaged[index] ? 'MORTGAGED' : money(space.price)}</span>}
+            {space.type === 'tax' && <span className="space-price">Pay {space.choice ? '$200 or 10%' : money(space.amount)}</span>}
           </div>
-        )
+          {owner !== null && <span className="owner-flag" title={`Owned by ${game.players[owner].name}`} />}
+        </>
       )}
     </div>
   )
 }
 
-function SpaceIcon({ space }) {
-  switch (space.type) {
-    case 'start':
-      return <span className="icon big">➜</span>
-    case 'jail':
-      return <span className="icon big">▦</span>
-    case 'rest':
-      return <span className="icon big">⛲</span>
-    case 'gotojail':
-      return <span className="icon big">👮</span>
-    case 'station':
-      return <span className="icon">🚂</span>
-    case 'utility':
-      return <span className="icon">{space.icon}</span>
-    case 'fortune':
-      return <span className="icon fortune">?</span>
-    case 'fund':
-      return <span className="icon">💰</span>
-    case 'tax':
-      return <span className="icon">🧾</span>
-    default:
-      return null
-  }
-}
-
-export function Token({ player, index, jailed, current }) {
+// a piece on its colored base, for the side panel and prompts (flat)
+export function Token({ player, index, current }) {
   return (
-    <span className={`token${jailed ? ' jailed' : ''}${current ? ' current' : ''}`} style={{ '--c': player.color }} title={player.name}>
-      {player.name.slice(0, 1).toUpperCase()}
-      <span className="token-num">{index + 1}</span>
+    <span className={`token${current ? ' current' : ''}`} title={`${player.name}${index !== undefined ? ` (player ${index + 1})` : ''}`}>
+      <PieceIcon id={player.piece} color={player.color} />
     </span>
   )
 }
 
-export default function Board({ game, positions, onOpen, children }) {
+// several pieces on one space stand in a little cluster (back row first, so the front ones overlap them)
+function clusterSpot(k, n) {
+  const cols = n <= 2 ? n : n <= 4 ? 2 : 3
+  const rows = Math.ceil(n / cols)
+  const col = k % cols
+  const row = Math.floor(k / cols)
+  return { '--dx': `${(col - (cols - 1) / 2) * 2.3}em`, '--dy': `${(row - (rows - 1) / 2) * 2.6}em` }
+}
+
+// The pieces on the board stand up: a colored base lies flat on the space and the silver figure stands on it,
+// turned to face you. They live in their own layer laid out like the board, so they can rise out of it in 3D.
+function TokenLayer({ game, positions }) {
+  const stacks = {}
+  positions.forEach((pos, p) => {
+    if (game.players[p].out) return
+    const key = pos === 10 ? (game.players[p].inJail ? 'jail-in' : 'jail-visit') : pos
+    ;(stacks[key] ??= []).push(p)
+  })
+  return (
+    <div className="token-layer" aria-hidden="true">
+      {Object.entries(stacks).map(([key, players]) => {
+        const spot = gridSpot(key.startsWith('jail') ? 10 : Number(key))
+        return (
+          <div key={key} className={`stack ${spot.side} ${key.startsWith('jail') ? key : ''}`} style={{ gridRow: spot.row, gridColumn: spot.col }}>
+            {players.map((p, k) => {
+              const player = game.players[p]
+              return (
+                <div
+                  key={p}
+                  className={`piece3d${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
+                  style={{ '--c': player.color, ...clusterSpot(k, players.length) }}
+                >
+                  <span className="piece-base" />
+                  <span className="piece-figure">
+                    <Piece3D id={player.piece} />
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Who owns what, as models standing on the board:
+//  - owned, nothing built: a little building in the owner's color
+//  - built: the classic green houses or red hotel, on a base in the owner's color
+// Properties nobody owns stay empty.
+function BuildingLayer({ game }) {
+  return (
+    <div className="token-layer building-layer" aria-hidden="true">
+      {game.owners.map((owner, i) => {
+        if (owner === null) return null
+        const spot = gridSpot(i)
+        const h = game.houses[i]
+        const color = game.players[owner].color
+        const street = SPACES[i].type === 'street'
+        return (
+          <div
+            key={i}
+            className={`lot ${spot.side}${street ? '' : ' centered'}${game.mortgaged[i] ? ' mortgaged' : ''}`}
+            style={{ gridRow: spot.row, gridColumn: spot.col, '--owner': color }}
+          >
+            {h === 0 && (
+              <span className="model-stand owned" title={game.players[owner].name}>
+                <Extruded layers={5}><OwnedModel color={color} /></Extruded>
+              </span>
+            )}
+            {h === 5 && (
+              <span className="model-stand hotel built">
+                <Extruded layers={5}><HotelModel /></Extruded>
+              </span>
+            )}
+            {h > 0 && h < 5 && (
+              <span className="built-row">
+                {Array.from({ length: h }, (_, k) => (
+                  <span className="model-stand built" key={k}>
+                    <Extruded layers={5}><HouseModel /></Extruded>
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// a drawn card: it lifts off its pile, flips over and comes up to face you. Click to put it back.
+function DrawnCard({ card, game, onClose }) {
+  const fortune = card.deck === 'fortune'
+  return (
+    <div className={`card3d-wrap ${card.deck}`}>
+      <button className="card3d" onClick={onClose} title="Click to close">
+        <span className="card3d-back">
+          {fortune ? <Question /> : <Chest />}
+        </span>
+        <span className="card3d-front">
+          <span className="card-title">{fortune ? 'FORTUNE' : 'TOWN FUND'}</span>
+          <span className="card-pic">{fortune ? <Question /> : <Chest />}</span>
+          <span className="card-text">{card.text}</span>
+          <span className="card-who">{game.players[card.player].name}</span>
+        </span>
+      </button>
+    </div>
+  )
+}
+
+// a stack of face-down cards on a pile spot
+function CardStack({ deck }) {
+  return (
+    <span className="card-stack" aria-hidden="true">
+      {Array.from({ length: 7 }, (_, k) => (
+        <span key={k} className={`stack-card ${deck}`} style={{ '--k': k }}>
+          {k === 6 && (deck === 'fortune' ? <Question /> : <Chest />)}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+export default function Board({ game, positions, onOpen, card, onCardClose, rollLabel, trayRef }) {
   return (
     <div className="board">
       {SPACES.map((_, i) => (
-        <Space key={i} index={i} game={game} positions={positions} onOpen={onOpen} />
+        <Space key={i} index={i} game={game} onOpen={onOpen} />
       ))}
-      <div className="board-center">{children}</div>
+      <div className="board-center">
+        {/* the two card piles and the name, printed on the board */}
+        <div className="deck-spot fortune">
+          <span className="spot-label">FORTUNE</span>
+          <CardStack deck="fortune" />
+        </div>
+        <div className="deck-spot fund">
+          <span className="spot-label">TOWN FUND</span>
+          <CardStack deck="fund" />
+        </div>
+        <div className="board-title" aria-hidden="true">
+          <span className="logo-house" />
+          LANDLORD
+        </div>
+        {/* the dice land in a felt tray in the middle of the board */}
+        <div ref={trayRef} className={`dice-tray${rollLabel ? ' ready' : ''}`} aria-hidden="true" />
+        {card && <DrawnCard key={card.id} card={card} game={game} onClose={onCardClose} />}
+      </div>
+      <BuildingLayer game={game} />
+      <TokenLayer game={game} positions={positions} />
     </div>
   )
 }

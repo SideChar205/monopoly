@@ -21,6 +21,7 @@ import {
 import { DECKS } from './cards.js'
 
 export const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899']
+export const PIECE_IDS = ['car', 'hat', 'dog', 'ship', 'boot', 'barrow', 'thimble', 'iron']
 
 const rollDie = () => 1 + Math.floor(Math.random() * 6)
 const shuffled = (n) => {
@@ -425,6 +426,7 @@ export function newGame({ seats, startingCash = STARTING_CASH }) {
       name: seat.name,
       isBot: seat.isBot,
       color: seat.color ?? TOKEN_COLORS[i % TOKEN_COLORS.length],
+      piece: seat.piece ?? PIECE_IDS[i % PIECE_IDS.length],
       cash: startingCash,
       pos: 0,
       inJail: false,

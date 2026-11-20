@@ -1,32 +1,34 @@
 import { useState } from 'react'
-import { TOKEN_COLORS } from '../game/rules.js'
+import { TOKEN_COLORS, PIECE_IDS } from '../game/rules.js'
+import { PIECES, PieceIcon } from './Pieces.jsx'
 import { STARTING_CASH } from '../game/board.js'
 import { randomBotName } from '../game/botNames.js'
 
 const CASH_OPTIONS = [1000, 1500, 2000, 2500]
 
+// a piece nobody else at the table has yet (bots get a random one)
+const freePiece = (seats, random = true) => {
+  const free = PIECE_IDS.filter((id) => !seats.some((s) => s.piece === id))
+  return random ? free[Math.floor(Math.random() * free.length)] : free[0]
+}
+
 const defaultSeats = () => {
-  const names = ['Player 1']
-  return [
-    { name: 'Player 1', isBot: false },
-    ...[1, 2, 3].map(() => {
-      const name = randomBotName(names)
-      names.push(name)
-      return { name, isBot: true }
-    }),
-  ]
+  const seats = [{ name: 'Player 1', isBot: false, piece: 'car' }]
+  for (let k = 1; k < 4; k++) seats.push({ name: randomBotName(seats.map((s) => s.name)), isBot: true, piece: freePiece(seats) })
+  return seats
 }
 
 // The start screen: who's playing, and with how much money
 export default function Setup({ initial, onStart }) {
   const [seats, setSeats] = useState(() => initial?.seats ?? defaultSeats())
   const [cash, setCash] = useState(initial?.startingCash ?? STARTING_CASH)
+  const [picking, setPicking] = useState(null) // which seat is choosing a piece
 
   const setCount = (n) =>
     setSeats((s) => {
       if (n < s.length) return s.slice(0, n)
       const next = [...s]
-      while (next.length < n) next.push({ name: randomBotName(next.map((x) => x.name)), isBot: true })
+      while (next.length < n) next.push({ name: randomBotName(next.map((x) => x.name)), isBot: true, piece: freePiece(next) })
       return next
     })
   const update = (i, patch) => setSeats((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)))
@@ -56,7 +58,9 @@ export default function Setup({ initial, onStart }) {
           <ul className="seat-list">
             {seats.map((seat, i) => (
               <li key={i} className="seat-row">
-                <span className="pawn" style={{ '--c': TOKEN_COLORS[i] }}>{seat.name.slice(0, 1).toUpperCase()}</span>
+                <button className="piece-btn" title="Choose a piece" onClick={() => setPicking(picking === i ? null : i)}>
+                  <PieceIcon id={seat.piece} color={TOKEN_COLORS[i]} size={40} />
+                </button>
                 <input
                   className="text-input"
                   value={seat.name}
@@ -77,6 +81,28 @@ export default function Setup({ initial, onStart }) {
                     Bot
                   </button>
                 </div>
+                {picking === i && (
+                  <div className="piece-picker">
+                    {PIECES.map((pc) => {
+                      const takenBy = seats.findIndex((s, j) => j !== i && s.piece === pc.id)
+                      return (
+                        <button
+                          key={pc.id}
+                          className={`piece-choice${seat.piece === pc.id ? ' on' : ''}`}
+                          title={takenBy >= 0 ? `${pc.name} (swap with ${seats[takenBy].name})` : pc.name}
+                          onClick={() => {
+                            // picking someone else's piece swaps the two
+                            setSeats((all) => all.map((s, j) => (j === i ? { ...s, piece: pc.id } : j === takenBy ? { ...s, piece: seat.piece } : s)))
+                            setPicking(null)
+                          }}
+                        >
+                          <PieceIcon id={pc.id} size={38} />
+                          <small>{pc.name}</small>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

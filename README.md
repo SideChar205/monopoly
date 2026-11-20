@@ -15,6 +15,21 @@ npm run dev
 
 Opens on port **5176** (5173 = portfolio, 5174 = hr-system, 5175 = uno-game).
 
+## Look
+
+A classic board lying on a table, seen in 3D at an angle: mint spaces, black lines, color bands, drawn art on every
+space, and the two card piles in the middle.
+
+- **Pieces** stand up on the board and hop from space to space. Players pick one on the start screen:
+  car, top hat, dog, ship, boot, wheelbarrow, thimble or iron (our own drawings, in silver on a base in the player's color).
+- **Who owns what** stands on the board: an owned property gets a little building in the owner's color.
+  Once built, it shows the classic green houses or red hotel, on a base in the owner's color.
+- **Players sit around the board** (you at the bottom, like at a real table) with their money and title deeds on the table
+  in front of them, grouped by color set. Click a player to see all their deeds.
+- **Dice** are real 3D cubes thrown onto the board: they tumble across it and land on the rolled numbers.
+- **Cards** lift off their pile on the board, flip over and come up to face you, like drawing a real card.
+- Your buttons and the game log are at the top of the side panel.
+
 ## Rules
 
 Follows the Parker Brothers rulebook (2004/2007 edition, Hasbro instruction sheet 00009).

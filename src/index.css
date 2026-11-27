@@ -1184,3 +1184,69 @@ button:disabled { cursor: not-allowed; }
 .players-rail .player-name { min-width: 0; }
 .players-rail .player-name strong { display: flex; align-items: center; min-width: 0; white-space: nowrap; }
 .players-rail .you-tag { flex: none; }
+
+/* ================= Layout v3: the table on the left, the players on the right ================= */
+.game-page { grid-template-columns: minmax(0, 1fr) 290px; }
+:root { --board: min(calc((100vh - 150px) * .98), calc(100vw - 290px - 64px - 48px), 1000px); }
+.table-area { padding: 58px 24px 92px; }
+.players-rail { order: 2; }
+
+/* the bar along the top of the table */
+.hud-top {
+  position: absolute; left: 14px; right: 14px; top: 12px; z-index: 9;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none;
+}
+.hud-top > * { pointer-events: auto; }
+.hud-group { display: flex; gap: 6px; align-items: center; }
+.hud-chip { padding: 5px 11px; border-radius: 999px; background: rgba(2, 12, 9, .55); color: #d1fae5; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.hud-status {
+  display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 999px; min-width: 0;
+  background: rgba(2, 12, 9, .7); color: #fff; font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .3);
+}
+.hud-status .token { width: 26px; height: 26px; }
+.hud-top .btn.small { background: rgba(2, 12, 9, .55); }
+
+/* your choices: a bar along the bottom of the table (only when there's something to decide) */
+.hud-dock {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 9; max-width: calc(100% - 28px);
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center;
+  padding: 10px 14px 10px 20px; border-radius: 18px; background: rgba(250, 252, 249, .97); color: var(--ink);
+  box-shadow: 0 0 0 2px #fbbf24, 0 16px 40px rgba(0, 0, 0, .5); animation: dockIn .3s cubic-bezier(.2, .9, .3, 1.2);
+}
+.hud-dock .prompt-title { margin: 0; font-size: 17px; }
+.hud-dock .prompt-sub { margin: 0; font-size: 13px; max-width: 420px; }
+.hud-dock .prompt-buttons { margin: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.hud-dock.auction-dock { width: min(680px, calc(100% - 28px)); padding: 12px 16px; box-shadow: 0 0 0 2px #a78bfa, 0 16px 40px rgba(0, 0, 0, .5); }
+.hud-dock .auction { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+@keyframes dockIn { from { opacity: 0; transform: translate(-50%, 20px); } }
+
+/* the latest moves, small, in the bottom-left corner of the table */
+.hud-log {
+  position: absolute; left: 16px; bottom: 14px; z-index: 8; max-width: min(360px, 30%); margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column-reverse; gap: 3px; pointer-events: none;
+}
+.hud-log li { font-size: 12px; color: #a7f3d0; background: rgba(2, 12, 9, .5); padding: 3px 9px; border-radius: 8px; width: fit-content; }
+.hud-log li:first-child { color: #fff; font-weight: 700; animation: feedIn .3s ease; }
+.hud-log li:nth-child(3) { opacity: .6; }
+/* the roll button sits a little lower now that the choices bar is separate */
+.roll-btn2 { top: 58%; }
+@media (max-width: 1250px) { .hud-log { display: none; } }
+@keyframes feedIn { from { opacity: 0; transform: translateY(4px); } }
+
+/* Pieces move with left/top again: sliding with container-relative units made them vanish mid-move in Chrome.
+   (The real cause of the lag was the blurred player seats over the board, which are gone now.) */
+.token-layer.walkers { container-type: normal; }
+.walker {
+  translate: none;
+  transition: left var(--step) cubic-bezier(.45, .05, .55, .95), top var(--step) cubic-bezier(.45, .05, .55, .95), transform .9s cubic-bezier(.4, .1, .25, 1);
+}
+
+/* ================= The drawn card: in the middle of the table, over everything ================= */
+.card-stage { position: absolute; inset: 0; z-index: 12; display: grid; place-items: center; pointer-events: none; background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, .35), transparent 60%); animation: fade .25s ease; }
+.card-stage .side-card { pointer-events: auto; width: min(340px, 70%); margin: 0; animation: cardFromPile .55s cubic-bezier(.2, .8, .3, 1.1) both; }
+.card-stage .side-card.fortune { --from: translate(-26vw, -22vh) rotate(-35deg) scale(.4); }
+.card-stage .side-card.fund { --from: translate(26vw, 22vh) rotate(35deg) scale(.4); }
+.card-stage .side-card-inner { height: 250px; animation: sideCardFlip .7s .35s cubic-bezier(.3, .7, .3, 1) both; }
+.card-stage .card-text { font-size: 19px; }
+@keyframes cardFromPile { from { transform: var(--from); opacity: .2; } to { transform: none; opacity: 1; } }

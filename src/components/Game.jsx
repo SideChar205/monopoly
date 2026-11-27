@@ -307,12 +307,6 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
 
   return (
     <div className="game-page">
-      {/* the players, with their money and deeds, in their own column beside the table */}
-      <aside className="players-rail">
-        {seatOrder.map((pi, k) => (
-          <PlayerCard key={pi} game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
-        ))}
-      </aside>
 
       <main className={`table-area${zoomed ? ' zoomed' : ''}`} ref={areaRef}>
         {/* the board lies on the table, seen at an angle: the dice roll on it and the cards come off its piles */}
@@ -345,18 +339,36 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
             </span>
           </button>
         )}
-        {/* where everyone "sits" around the table (invisible): the dice are thrown from the roller's side */}
-        {seatOrder.map((pi, k) => (
-          <div key={pi} data-seat={pi} className={`seat-spot seat-anchor ${SEAT_LAYOUTS[seatOrder.length][k]}`} aria-hidden="true" />
-        ))}
-      </main>
+        {/* a drawn Fortune / Town Fund card comes off its pile and turns over in the middle of the table */}
+        {card && (
+          <div className="card-stage">
+            <SideCard key={card.id} card={card} game={game} onClose={closeCard} />
+          </div>
+        )}
 
-      <aside className="side">
-        {/* a drawn card is shown here, in its own spot (never on the board, so nothing covers it) */}
-        {card && <SideCard key={card.id} card={card} game={game} onClose={closeCard} />}
-        <div className="side-top">
-          <span className="turn-no">Turn {game.turn}</span>
-          <div className="side-buttons">
+        {/* ---- on the table: a bar along the top, your choices along the bottom, and the latest moves ---- */}
+        <div className="hud-top">
+          <div className="hud-group">
+            <span className="hud-chip">Turn {game.turn}</span>
+            <span className="hud-chip" title="Houses left in the bank">🏠 {game.bank.houses}</span>
+            <span className="hud-chip" title="Hotels left in the bank">🏨 {game.bank.hotels}</span>
+          </div>
+          <div className="hud-status">
+            {game.phase === 'over' ? (
+              'Game over'
+            ) : game.phase === 'auction' ? (
+              <>🔨 Auction: {SPACES[game.auction.space].name}</>
+            ) : !myTurn ? (
+              <>
+                <Token player={me} index={game.current} /> {me.name} is thinking<span className="dots" />
+              </>
+            ) : (
+              <>
+                <Token player={me} index={game.current} /> {game.phase === 'roll' && game.dice && game.dice[0] === game.dice[1] && !me.inJail ? 'Doubles! Roll again' : `${me.name}, your turn`}
+              </>
+            )}
+          </div>
+          <div className="hud-group">
             <button className={`btn small ghost follow-btn${follow ? ' on' : ''}`} title="Zoom in on each piece while it moves" onClick={toggleFollow}>
               🎥 Follow {follow ? 'on' : 'off'}
             </button>
@@ -370,34 +382,36 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
           </div>
         </div>
 
-        {/* what happens next: your buttons, or who we're waiting for */}
-        <div className={`action-panel${myTurn && !busy && game.phase !== 'auction' ? ' yours' : ''}`}>
-          <div className="prompt">
-            {game.phase === 'over' ? null : game.phase === 'auction' ? (
-              <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} />
-            ) : !myTurn ? (
-              <p className="thinking">
-                <Token player={me} index={game.current} /> {me.name} is thinking<span className="dots" />
-              </p>
-            ) : busy ? (
-              <p className="thinking">…</p>
-            ) : (
-              <Prompt game={game} dispatch={dispatch} space={space} confirm={confirmQuit} setConfirm={setConfirmQuit} openDeed={setDeed} />
-            )}
+        {/* your choices (buy, end turn, taxes, debts, jail...) or the auction, along the bottom of the table */}
+        {game.phase === 'auction' && !zoomed ? (
+          <div className="hud-dock auction-dock">
+            <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} />
           </div>
-          <ul className="log">
-            {game.log.slice(0, 4).map((line, i) => (
-              <li key={`${game.log.length}-${i}`}>{line}</li>
-            ))}
-          </ul>
-        </div>
+        ) : (
+          myTurn && !busy && !zoomed && game.phase !== 'over' && !(game.phase === 'roll' && !me.inJail) && (
+            <div className="hud-dock" key={`${game.phase}-${game.turn}`}>
+              <Prompt game={game} dispatch={dispatch} space={space} confirm={confirmQuit} setConfirm={setConfirmQuit} openDeed={setDeed} />
+            </div>
+          )
+        )}
+
+        <ul className="hud-log">
+          {game.log.slice(0, 3).map((line, i) => (
+            <li key={`${game.log.length}-${i}`}>{line}</li>
+          ))}
+        </ul>
+        {/* where everyone "sits" around the table (invisible): the dice are thrown from the roller's side */}
+        {seatOrder.map((pi, k) => (
+          <div key={pi} data-seat={pi} className={`seat-spot seat-anchor ${SEAT_LAYOUTS[seatOrder.length][k]}`} aria-hidden="true" />
+        ))}
+      </main>
 
 
-        <div className="bank">
-          <span title="Houses left in the bank">🏠 {game.bank.houses}</span>
-          <span title="Hotels left in the bank">🏨 {game.bank.hotels}</span>
-          <span className="muted">Click any property to see its card</span>
-        </div>
+      {/* the players, with their money and deeds, in their own column beside the table */}
+      <aside className="players-rail">
+        {seatOrder.map((pi, k) => (
+          <PlayerCard key={pi} game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
+        ))}
       </aside>
 
       {sheet !== null && <PlayerSheet game={game} index={sheet} onOpen={setDeed} onClose={() => setSheet(null)} />}

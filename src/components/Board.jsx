@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { SPACES, GROUPS, gridSpot } from '../game/board.js'
 import { PieceIcon, Piece3D } from './Pieces.jsx'
 import { SPACE_ART, UTILITY_ART, TAX_ART, StartArrow, Bars, Chest, Question, HouseModel, HotelModel, Extruded, OwnedModel } from './Art.jsx'
@@ -107,39 +108,55 @@ function clusterSpot(k, n) {
   return { '--dx': `${(col - (cols - 1) / 2) * 2.3}em`, '--dy': `${(row - (rows - 1) / 2) * 2.6}em` }
 }
 
-// The pieces on the board stand up: a colored base lies flat on the space and the silver figure stands on it,
-// turned to face you. They live in their own layer laid out like the board, so they can rise out of it in 3D.
-function TokenLayer({ game, positions }) {
-  const stacks = {}
+// where the middle of a space is on the board, in % (the corners are 1.6 times as big as the other spaces)
+const CELL = (k) => (k === 1 ? 0 : 1.6 + (k - 2)) // where row/column k starts
+const SIZE = (k) => (k === 1 || k === 11 ? 1.6 : 1)
+function spaceCenter(i, jail) {
+  const spot = gridSpot(i)
+  let fx = 0.5
+  let fy = 0.5
+  if (jail === 'in') [fx, fy] = [0.66, 0.38] // behind the bars
+  if (jail === 'visit') [fx, fy] = [0.3, 0.78] // just visiting: on the edge of the jail space
+  return { x: ((CELL(spot.col) + SIZE(spot.col) * fx) / 12.6) * 100, y: ((CELL(spot.row) + SIZE(spot.row) * fy) / 12.6) * 100, side: spot.side }
+}
+
+// The pieces stand up on the board and hop from space to space: each step, the piece glides to the next space
+// while it jumps up in an arc and lands. (They live in their own layer so they can rise out of the board in 3D.)
+function TokenLayer({ game, positions, stepMs }) {
+  // count every step a piece takes, so its hop plays again each time
+  const last = useRef(positions)
+  const hops = useRef(positions.map(() => 0))
+  positions.forEach((pos, p) => {
+    if (pos !== last.current[p]) hops.current[p] += 1
+  })
+  last.current = positions
+
+  const groups = {}
   positions.forEach((pos, p) => {
     if (game.players[p].out) return
-    const key = pos === 10 ? (game.players[p].inJail ? 'jail-in' : 'jail-visit') : pos
-    ;(stacks[key] ??= []).push(p)
+    const key = pos === 10 ? (game.players[p].inJail ? 'jail-in' : 'jail-visit') : String(pos)
+    ;(groups[key] ??= []).push(p)
   })
   return (
-    <div className="token-layer" aria-hidden="true">
-      {Object.entries(stacks).map(([key, players]) => {
-        const spot = gridSpot(key.startsWith('jail') ? 10 : Number(key))
-        return (
-          <div key={key} className={`stack ${spot.side} ${key.startsWith('jail') ? key : ''}`} style={{ gridRow: spot.row, gridColumn: spot.col }}>
-            {players.map((p, k) => {
-              const player = game.players[p]
-              return (
-                <div
-                  key={p}
-                  className={`piece3d${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
-                  style={{ '--c': player.color, ...clusterSpot(k, players.length) }}
-                >
-                  <span className="piece-base" />
-                  <span className="piece-figure">
-                    <Piece3D id={player.piece} />
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
+    <div className="token-layer walkers" aria-hidden="true" style={{ '--step': `${stepMs}ms` }}>
+      {Object.entries(groups).flatMap(([key, players]) =>
+        players.map((p, k) => {
+          const player = game.players[p]
+          const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null)
+          return (
+            <div
+              key={p}
+              className={`piece3d walker side-${at.side}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
+              style={{ '--c': player.color, left: `${at.x}%`, top: `${at.y}%`, ...clusterSpot(k, players.length) }}
+            >
+              <span key={`b${hops.current[p]}`} className="piece-base" />
+              <span key={`f${hops.current[p]}`} className="piece-figure">
+                <Piece3D id={player.piece} />
+              </span>
+            </div>
+          )
+        }),
+      )}
     </div>
   )
 }
@@ -222,7 +239,7 @@ function CardStack({ deck }) {
   )
 }
 
-export default function Board({ game, positions, onOpen, card, onCardClose }) {
+export default function Board({ game, positions, onOpen, card, onCardClose, stepMs = 480 }) {
   return (
     <div className="board">
       {SPACES.map((_, i) => (
@@ -249,7 +266,7 @@ export default function Board({ game, positions, onOpen, card, onCardClose }) {
         {card && <DrawnCard key={card.id} card={card} game={game} onClose={onCardClose} />}
       </div>
       <BuildingLayer game={game} />
-      <TokenLayer game={game} positions={positions} />
+      <TokenLayer game={game} positions={positions} stepMs={stepMs} />
     </div>
   )
 }

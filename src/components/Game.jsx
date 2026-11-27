@@ -18,7 +18,7 @@ const SEAT_LAYOUTS = {
   5: ['bottom', 'left', 'top-left', 'top-right', 'right'],
   6: ['bottom', 'left', 'top-left', 'top-right', 'right', 'bottom-right'],
 }
-const HOP_MS = 340 // time per space when a piece hops along (slow enough to follow)
+const HOP_MS = 520 // time per space when a piece hops along (slow enough to follow)
 const DICE_MS = 1600 // the dice are thrown, bounce and settle before anything else happens
 const CARD_MS = 3200 // how long a drawn card stays up (or until you click it)
 
@@ -303,6 +303,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
               onOpen={setDeed}
               card={card}
               onCardClose={closeCard}
+              stepMs={HOP_MS}
             />
           </div>
         </div>

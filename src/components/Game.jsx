@@ -38,6 +38,8 @@ function useDirector(game) {
   const [dice, setDice] = useState({ values: game.dice, key: game.rollId }) // the last roll stays on the board
   const [card, setCard] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [focus, setFocus] = useState(null) // the player the camera follows while their piece moves
+  const unfocus = useRef(0)
   const pos = useRef(game.players.map((p) => p.pos))
   const shown = useRef(game)
   const queue = useRef([])
@@ -50,6 +52,11 @@ function useDirector(game) {
   }
 
   async function walk(moves) {
+    if (moves.length) {
+      clearTimeout(unfocus.current)
+      setFocus(moves[0].player)
+      await wait(350) // let the camera move in before the piece sets off
+    }
     for (const move of moves) {
       if (move.kind === 'jump') {
         await wait(250)
@@ -93,7 +100,8 @@ function useDirector(game) {
     }
     await walk(moves.slice(0, cut))
     if (newCard) {
-      await wait(200)
+      setFocus(null) // pull back so the whole board (and the card) is in view
+      await wait(450)
       setCard(newCard)
       await new Promise((resolve) => {
         closeCardNow.current = resolve
@@ -117,10 +125,81 @@ function useDirector(game) {
       while (queue.current.length) await play(queue.current.shift())
       running.current = false
       setBusy(false)
+      // stay on the piece for a moment after it lands, then show the whole board again
+      clearTimeout(unfocus.current)
+      unfocus.current = setTimeout(() => setFocus(null), 1100)
     })()
   }, [game]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { view, positions, dice, card, busy, closeCard: () => closeCardNow.current?.() }
+  return { view, positions, dice, card, busy, focus, endFocus: () => setFocus(null), closeCard: () => closeCardNow.current?.() }
+}
+
+// ---- camera: zoom in on the piece that's moving and follow it, then pull back to the whole board ----
+const ZOOM = 2.4
+function useCamera({ areaRef, camRef, positions, focus }) {
+  const [cam, setCam] = useState({ x: 0, y: 0, s: 1 })
+  const spots = useRef(null) // where every space is on screen when the camera is at rest
+  const stale = useRef(true)
+  const camNow = useRef(cam)
+  camNow.current = cam
+
+  // measure the board while it isn't zoomed (on load, and again after the window changes size)
+  useEffect(() => {
+    const measure = () => {
+      const area = areaRef.current
+      const board = area?.querySelector('.board')
+      if (!area || !board || camNow.current.s !== 1) return (stale.current = true)
+      const a = area.getBoundingClientRect()
+      const rel = (r) => ({ x: r.left - a.left + r.width / 2, y: r.top - a.top + r.height / 2 })
+      const spaces = []
+      area.querySelectorAll('.board [data-space]').forEach((el) => (spaces[Number(el.dataset.space)] = rel(el.getBoundingClientRect())))
+      const b = board.getBoundingClientRect()
+      spots.current = { spaces, board: { l: b.left - a.left, r: b.right - a.left, t: b.top - a.top, b: b.bottom - a.top }, w: a.width, h: a.height }
+      stale.current = false
+    }
+    const later = [60, 300, 900].map((ms) => setTimeout(measure, ms))
+    const onResize = () => {
+      stale.current = true
+      measure()
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      later.forEach(clearTimeout)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [areaRef])
+
+  const at = focus === null ? null : positions[focus]
+  useEffect(() => {
+    const m = spots.current
+    const camEl = camRef.current
+    if (at === null || at === undefined || !m || !camEl) {
+      setCam((c) => (c.s === 1 ? c : { x: 0, y: 0, s: 1 }))
+      // after pulling back, measure again if the window changed size while zoomed in
+      if (stale.current) {
+        const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 800)
+        return () => clearTimeout(t)
+      }
+      return
+    }
+    const p = m.spaces[at]
+    if (!p) return
+    // the camera scales from its own top-left corner: move it so the space ends up in the middle of the table
+    const C = { x: camEl.offsetLeft, y: camEl.offsetTop }
+    const s = ZOOM
+    let x = m.w / 2 - C.x - s * (p.x - C.x)
+    let y = m.h / 2 - C.y - s * (p.y - C.y)
+    // don't slide the board so far that empty table shows past its edge
+    const clamp = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)))
+    // (a little table may show past the edge, so pieces on the outer spaces still end up near the middle)
+    const mx = m.w * 0.22
+    const my = m.h * 0.22
+    x = clamp(x, m.w - mx - C.x - s * (m.board.r - C.x), mx - C.x - s * (m.board.l - C.x))
+    y = clamp(y, m.h - my - C.y - s * (m.board.b - C.y), my - C.y - s * (m.board.t - C.y))
+    setCam({ x, y, s })
+  }, [at, focus]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return cam
 }
 
 // a +$/-$ bubble next to a player's cash whenever it changes
@@ -141,7 +220,7 @@ function useCashChanges(players) {
 
 export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   // `latest` is the real game; `game` is what the screen shows, which catches up step by step (see useDirector)
-  const { view: game, positions, dice, card, busy, closeCard } = useDirector(latest)
+  const { view: game, positions, dice, card, busy, focus, endFocus, closeCard } = useDirector(latest)
   const cashChanges = useCashChanges(game.players)
   const [deed, setDeed] = useState(null)
   const [sheet, setSheet] = useState(null) // which player's property window is open
@@ -154,6 +233,28 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   const canRoll = myTurn && !busy && game.phase === 'roll'
   const trayRef = useRef(null)
   const areaRef = useRef(null)
+  const camRef = useRef(null)
+  const [follow, setFollow] = useState(() => {
+    try {
+      return localStorage.getItem('landlord-follow') !== 'off'
+    } catch {
+      return true
+    }
+  })
+  const toggleFollow = () => {
+    setFollow((f) => {
+      try {
+        localStorage.setItem('landlord-follow', f ? 'off' : 'on')
+      } catch { /* storage blocked */ }
+      return !f
+    })
+  }
+  // your roll comes up: show the whole board (the roll button sits over the dice tray)
+  useEffect(() => {
+    if (canRoll) endFocus()
+  }, [canRoll]) // eslint-disable-line react-hooks/exhaustive-deps
+  const cam = useCamera({ areaRef, camRef, positions, focus: follow ? focus : null })
+  const zoomed = cam.s !== 1
 
   // who sits at the bottom (you): the human whose turn it is; between turns, the last human who played
   const anchorRef = useRef(Math.max(0, game.players.findIndex((p) => !p.isBot)))
@@ -190,8 +291,9 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
 
   return (
     <div className="game-page">
-      <main className="table-area" ref={areaRef}>
+      <main className={`table-area${zoomed ? ' zoomed' : ''}`} ref={areaRef}>
         {/* the board lies on the table, seen at an angle: the dice roll on it and the cards come off its piles */}
+        <div className="camera" ref={camRef} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.s})` }}>
         <div className="scene">
           <div className="board-tilt">
             <Board
@@ -205,9 +307,12 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
             />
           </div>
         </div>
+        </div>
+        <div className={`dice-layer${zoomed ? ' away' : ''}`}>
         <ScreenDice key={dice.key} dice={dice.values} seed={dice.key} onRoll={canRoll ? roll : null} trayRef={trayRef} areaRef={areaRef} />
+        </div>
         {/* the roll button floats flat in front of the dice tray (outside the 3D board, so nothing cuts it) */}
-        {canRoll && (
+        {canRoll && !zoomed && (
           <button className="roll-btn2" onClick={roll}>
             <span className="roll-icon">🎲</span>
             <span className="roll-text">
@@ -227,6 +332,9 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
         <div className="side-top">
           <span className="turn-no">Turn {game.turn}</span>
           <div className="side-buttons">
+            <button className={`btn small ghost follow-btn${follow ? ' on' : ''}`} title="Zoom in on each piece while it moves" onClick={toggleFollow}>
+              🎥 Follow {follow ? 'on' : 'off'}
+            </button>
             {game.phase !== 'over' &&
               (confirmQuit === 'end' ? (
                 <button className="btn small danger" onClick={() => dispatch({ type: 'END_GAME' })}>End now?</button>

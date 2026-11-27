@@ -1036,3 +1036,26 @@ button:disabled { cursor: not-allowed; }
 .sdie-view { transform: rotateX(26deg) rotateZ(var(--yaw)); }
 .sdie-slot { top: calc(var(--size) * -.7); }
 .sdie-shadow { top: 55%; height: 55%; }
+
+/* ================= Camera: follows the moving piece ================= */
+.camera { transform-origin: 0 0; transition: transform .7s cubic-bezier(.3, .7, .25, 1); will-change: transform; }
+/* the dice and the roll button are measured with the board at rest, so they step aside while it's zoomed in */
+.dice-layer { transition: opacity .3s ease; }
+.dice-layer.away { opacity: 0; pointer-events: none; }
+.follow-btn { opacity: .75; }
+.follow-btn.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .camera { transition-duration: .01s; } }
+.seat-spot { transition: opacity .4s ease; }
+.table-area.zoomed .seat-spot { opacity: .35; }
+.table-area.zoomed .seat-spot:hover { opacity: 1; }
+
+/* ================= Spaces face outwards, like a real board =================
+   Each space is drawn as if it were on the bottom row, then turned: the left side reads from the left,
+   the top row from the far side, and the right side from the right. */
+.space:not(.corner) { container-type: size; }
+.space-face { position: absolute; display: flex; flex-direction: column; }
+.face-bottom .space-face { inset: 0; }
+.face-top .space-face { inset: 0; transform: rotate(180deg); }
+.face-left .space-face, .face-right .space-face { width: 100cqh; height: 100cqw; left: 50%; top: 50%; }
+.face-left .space-face { transform: translate(-50%, -50%) rotate(90deg); }
+.face-right .space-face { transform: translate(-50%, -50%) rotate(-90deg); }

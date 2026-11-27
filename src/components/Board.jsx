@@ -59,7 +59,8 @@ function Space({ index, game, onOpen }) {
 
   return (
     <div
-      className={`space ${spot.side}${corner ? ' corner' : ''} t-${space.type}${game.mortgaged[index] ? ' mortgaged' : ''}${ownable ? ' clickable' : ''}`}
+      data-space={index}
+      className={`space ${corner ? `${spot.side} corner` : `bottom face-${spot.side}`} t-${space.type}${game.mortgaged[index] ? ' mortgaged' : ''}${ownable ? ' clickable' : ''}`}
       style={{ gridRow: spot.row, gridColumn: spot.col, '--band': color ?? 'transparent', '--owner': owner !== null ? game.players[owner].color : 'transparent' }}
       onClick={ownable ? () => onOpen(index) : undefined}
       title={ownable ? `${space.name}: click for details` : space.name}
@@ -67,7 +68,8 @@ function Space({ index, game, onOpen }) {
       {corner ? (
         <Corner index={index} />
       ) : (
-        <>
+        // every space is laid out like one on the bottom row, then turned to face outwards (like a real board)
+        <div className="space-face">
           {color && (
             <div className="band">
               {houses > 0 && houses < 5 && Array.from({ length: houses }, (_, k) => <span key={k} className="house" />)}
@@ -81,7 +83,7 @@ function Space({ index, game, onOpen }) {
             {space.type === 'tax' && <span className="space-price">Pay {space.choice ? '$200 or 10%' : money(space.amount)}</span>}
           </div>
           {owner !== null && <span className="owner-flag" title={`Owned by ${game.players[owner].name}`} />}
-        </>
+        </div>
       )}
     </div>
   )

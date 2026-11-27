@@ -222,7 +222,7 @@ function CardStack({ deck }) {
   )
 }
 
-export default function Board({ game, positions, onOpen, card, onCardClose, rollLabel, trayRef }) {
+export default function Board({ game, positions, onOpen, card, onCardClose }) {
   return (
     <div className="board">
       {SPACES.map((_, i) => (
@@ -242,8 +242,10 @@ export default function Board({ game, positions, onOpen, card, onCardClose, roll
           <span className="logo-house" />
           LANDLORD
         </div>
-        {/* the dice land in a felt tray in the middle of the board */}
-        <div ref={trayRef} className={`dice-tray${rollLabel ? ' ready' : ''}`} aria-hidden="true" />
+        {/* invisible marks at the corners of the open middle: the dice measure them to know where they may land */}
+        {[0, 1, 2, 3].map((k) => (
+          <span key={k} className={`dice-zone-mark m${k}`} data-k={k} aria-hidden="true" />
+        ))}
         {card && <DrawnCard key={card.id} card={card} game={game} onClose={onCardClose} />}
       </div>
       <BuildingLayer game={game} />

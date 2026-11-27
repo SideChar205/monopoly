@@ -18,8 +18,8 @@ const SEAT_LAYOUTS = {
   5: ['bottom', 'left', 'top-left', 'top-right', 'right'],
   6: ['bottom', 'left', 'top-left', 'top-right', 'right', 'bottom-right'],
 }
-const HOP_MS = 150 // time per space when a token walks
-const DICE_MS = 1250 // the dice tumble and settle before anything else happens
+const HOP_MS = 340 // time per space when a piece hops along (slow enough to follow)
+const DICE_MS = 1600 // the dice are thrown, bounce and settle before anything else happens
 const CARD_MS = 3200 // how long a drawn card stays up (or until you click it)
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -231,7 +231,6 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   const actor = game.players[botActor(game)] ?? me
   const myTurn = !actor.isBot && game.phase !== 'over'
   const canRoll = myTurn && !busy && game.phase === 'roll'
-  const trayRef = useRef(null)
   const areaRef = useRef(null)
   const camRef = useRef(null)
   const [follow, setFollow] = useState(() => {
@@ -294,6 +293,8 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
       <main className={`table-area${zoomed ? ' zoomed' : ''}`} ref={areaRef}>
         {/* the board lies on the table, seen at an angle: the dice roll on it and the cards come off its piles */}
         <div className="camera" ref={camRef} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.s})` }}>
+        {/* the board is drawn at twice its size and shrunk to fit, so it stays sharp when the camera zooms in */}
+        <div className="scene-box">
         <div className="scene">
           <div className="board-tilt">
             <Board
@@ -302,16 +303,15 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
               onOpen={setDeed}
               card={card}
               onCardClose={closeCard}
-              rollLabel={canRoll ? 'roll' : null}
-              trayRef={trayRef}
             />
           </div>
         </div>
         </div>
-        <div className={`dice-layer${zoomed ? ' away' : ''}`}>
-        <ScreenDice key={dice.key} dice={dice.values} seed={dice.key} onRoll={canRoll ? roll : null} trayRef={trayRef} areaRef={areaRef} />
         </div>
-        {/* the roll button floats flat in front of the dice tray (outside the 3D board, so nothing cuts it) */}
+        <div className={`dice-layer${zoomed ? ' away' : ''}`}>
+        <ScreenDice key={dice.key} dice={dice.values} seed={dice.key} onRoll={canRoll ? roll : null} areaRef={areaRef} roller={game.current} hidden={zoomed} />
+        </div>
+        {/* the roll button floats flat over the middle of the board (outside the 3D board, so nothing cuts it) */}
         {canRoll && !zoomed && (
           <button className="roll-btn2" onClick={roll}>
             <span className="roll-icon">🎲</span>
@@ -322,7 +322,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
         )}
         {/* everyone sits around the board, their deeds and money on the table in front of them */}
         {seatOrder.map((pi, k) => (
-          <div key={pi} className={`seat-spot ${SEAT_LAYOUTS[seatOrder.length][k]}`}>
+          <div key={pi} data-seat={pi} className={`seat-spot ${SEAT_LAYOUTS[seatOrder.length][k]}`}>
             <PlayerCard game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
           </div>
         ))}

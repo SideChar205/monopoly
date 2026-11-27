@@ -29,7 +29,9 @@ export const PIECE_IDS = ['car', 'hat', 'dog', 'ship', 'boot', 'barrow', 'thimbl
 //   crazyFund     extra wild cards in the Town Fund pile
 //   freeParking   taxes, jail fines and card fees go into a pot; landing on Town Square wins it
 //   draft         before the first roll, everyone picks 2 free properties (snake order)
-export const DEFAULT_SETTINGS = { auctions: true, crazyFortune: false, crazyFund: false, freeParking: false, draft: false }
+//   teleport      a piece sent far by a card (or to jail) teleports there instead of hopping every square
+export const DEFAULT_SETTINGS = { auctions: true, crazyFortune: false, crazyFund: false, freeParking: false, draft: false, teleport: true }
+const TELEPORT_OVER = 6 // forced moves longer than this many squares teleport
 const DRAFT_ROUNDS = 2
 // money paid to the bank for these reasons goes into the Free Parking pot (rent and purchases never do)
 const POT_REASONS = new Set(['Income Tax', 'Luxury Tax', 'jail fine', 'card', 'repairs'])
@@ -151,7 +153,7 @@ function nextActive(s, from) {
 
 function sendToJail(s, p) {
   const player = s.players[p]
-  s.lastMove = { player: p, from: player.pos, to: JAIL, kind: 'jump', id: ++s.moveId }
+  s.lastMove = { player: p, from: player.pos, to: JAIL, kind: s.settings?.teleport ? 'teleport' : 'jump', id: ++s.moveId }
   s.moves.push(s.lastMove)
   player.pos = JAIL
   player.inJail = true
@@ -211,7 +213,7 @@ function applyCard(s, p, card) {
   const player = s.players[p]
   switch (card.kind) {
     case 'move':
-      return moveTo(s, p, card.to)
+      return moveTo(s, p, card.to, null, true)
     case 'back': {
       const to = (player.pos - card.steps + 40) % 40
       s.lastMove = { player: p, from: player.pos, to, kind: 'back', id: ++s.moveId }
@@ -223,7 +225,7 @@ function applyCard(s, p, card) {
       const list = card.near === 'station' ? STATIONS : UTILITIES
       let to = list.find((i) => i > player.pos)
       if (to === undefined) to = list[0]
-      return moveTo(s, p, to, card.near)
+      return moveTo(s, p, to, card.near, true)
     }
     case 'jail':
       return sendToJail(s, p)
@@ -251,8 +253,9 @@ function applyCard(s, p, card) {
       if (other === undefined) return
       const them = s.players[other]
       const [a, b] = [player.pos, them.pos]
-      s.moves.push({ player: p, from: a, to: b, kind: 'jump', id: ++s.moveId })
-      s.moves.push({ player: other, from: b, to: a, kind: 'jump', id: ++s.moveId })
+      const how = s.settings?.teleport ? 'teleport' : 'jump'
+      s.moves.push({ player: p, from: a, to: b, kind: how, id: ++s.moveId })
+      s.moves.push({ player: other, from: b, to: a, kind: how, id: ++s.moveId })
       s.lastMove = s.moves.at(-1)
       player.pos = b
       them.pos = a
@@ -279,7 +282,7 @@ function applyCard(s, p, card) {
       s.lastMove = s.moves.at(-1) ?? s.lastMove
       return
     case 'goto':
-      s.lastMove = { player: p, from: player.pos, to: card.to, kind: 'forward', id: ++s.moveId }
+      s.lastMove = { player: p, from: player.pos, to: card.to, kind: s.settings?.teleport && (card.to - player.pos + 40) % 40 > TELEPORT_OVER ? 'teleport' : 'forward', id: ++s.moveId }
       s.moves.push(s.lastMove)
       player.pos = card.to
       return landOn(s, p)
@@ -290,7 +293,7 @@ function applyCard(s, p, card) {
         addLog(s, `Everything is owned: ${player.name} collects ${money(100)} instead`)
         return
       }
-      return moveTo(s, p, free.sort((a, b) => SPACES[b].price - SPACES[a].price)[0])
+      return moveTo(s, p, free.sort((a, b) => SPACES[b].price - SPACES[a].price)[0], null, true)
     }
     case 'lottery': {
       const n = rollDie()
@@ -377,14 +380,15 @@ function applyCard(s, p, card) {
 }
 
 // move forward to a space, collecting the salary when passing (or landing on) Start
-function moveTo(s, p, to, special = null) {
+function moveTo(s, p, to, special = null, forced = false) {
   const player = s.players[p]
   const from = player.pos
+  const far = (to - from + 40) % 40 > TELEPORT_OVER
   if (to < from || (to === 0 && from !== 0)) {
     player.cash += START_SALARY
     addLog(s, `${player.name} passes Start and collects ${money(START_SALARY)}`)
   }
-  s.lastMove = { player: p, from, to, kind: 'forward', id: ++s.moveId }
+  s.lastMove = { player: p, from, to, kind: forced && far && s.settings?.teleport ? 'teleport' : 'forward', id: ++s.moveId }
   s.moves.push(s.lastMove)
   player.pos = to
   landOn(s, p, special)

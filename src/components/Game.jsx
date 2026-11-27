@@ -40,6 +40,7 @@ function useDirector(game) {
   const [card, setCard] = useState(null)
   const [busy, setBusy] = useState(false)
   const [focus, setFocus] = useState(null) // the player the camera follows while their piece moves
+  const [teleport, setTeleport] = useState(null) // { player, phase: 'out' | 'in' } while a piece teleports
   const unfocus = useRef(0)
   const pos = useRef(game.players.map((p) => p.pos))
   const shown = useRef(game)
@@ -59,6 +60,16 @@ function useDirector(game) {
       await wait(350) // let the camera move in before the piece sets off
     }
     for (const move of moves) {
+      if (move.kind === 'teleport') {
+        // beam out, appear at the new space, beam in
+        setTeleport({ player: move.player, phase: 'out', key: move.id })
+        await wait(420)
+        setPos(move.player, move.to)
+        setTeleport({ player: move.player, phase: 'in', key: move.id })
+        await wait(520)
+        setTeleport(null)
+        continue
+      }
       if (move.kind === 'jump') {
         await wait(250)
         setPos(move.player, move.to)
@@ -132,7 +143,7 @@ function useDirector(game) {
     })()
   }, [game]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { view, positions, dice, card, busy, focus, endFocus: () => setFocus(null), closeCard: () => closeCardNow.current?.() }
+  return { view, positions, dice, card, busy, focus, teleport, endFocus: () => setFocus(null), closeCard: () => closeCardNow.current?.() }
 }
 
 // ---- camera: zoom in on the piece that's moving and follow it, then pull back to the whole board ----
@@ -222,7 +233,7 @@ function useCashChanges(players) {
 
 export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   // `latest` is the real game; `game` is what the screen shows, which catches up step by step (see useDirector)
-  const { view: game, positions, dice, card, busy, focus, endFocus, closeCard } = useDirector(latest)
+  const { view: game, positions, dice, card, busy, focus, teleport, endFocus, closeCard } = useDirector(latest)
   const cashChanges = useCashChanges(game.players)
   const [deed, setDeed] = useState(null)
   const [sheet, setSheet] = useState(null) // which player's property window is open
@@ -321,6 +332,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
               onOpen={(i) => (game.phase === 'draft' && myTurn && !busy && game.owners[i] === null ? dispatch({ type: 'DRAFT_PICK', space: i, player: game.current }) : setDeed(i))}
               card={null}
               stepMs={HOP_MS}
+              teleport={teleport}
               quarter={quarter}
             />
           </div>

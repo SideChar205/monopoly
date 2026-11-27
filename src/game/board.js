@@ -27,7 +27,7 @@ export const SPACES = [
   street('Copper Lane', 'brown', 60, [2, 10, 30, 90, 160, 250]),
   { type: 'fund', name: 'Town Fund' },
   street('Rust Row', 'brown', 60, [4, 20, 60, 180, 320, 450]),
-  { type: 'tax', name: 'Income Tax', amount: 200, choice: true }, // pay $200 or 10% of your total worth
+  { type: 'tax', name: 'Income Tax', amount: 200 }, // a flat $200 (our house rule: no 10% option)
   station('North Station'),
   street('Harbor Street', 'sky', 100, [6, 30, 90, 270, 400, 550]),
   { type: 'fortune', name: 'Fortune' },

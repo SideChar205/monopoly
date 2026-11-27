@@ -13,6 +13,7 @@ const RULES = [
   { key: 'crazyFortune', name: 'Crazy Fortune', info: 'Adds 8 wild cards to the Fortune pile: swap places with the leader, pickpocket the richest, lottery tickets, double or nothing and more.' },
   { key: 'freeParking', name: 'Free Parking', info: 'Taxes, jail fines and card fees go into a pot in the middle of the board. Land on Town Square to win it all.' },
   { key: 'draft', name: 'Card Draft', info: 'Before the first roll, everyone picks 2 free properties, taking turns back and forth (snake order).' },
+  { key: 'teleport', name: 'Teleport', info: 'When a card sends a piece far across the board (or to jail), it teleports there instead of hopping square by square.' },
 ]
 
 // a piece nobody else at the table has yet (bots get a random one)

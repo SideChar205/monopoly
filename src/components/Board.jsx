@@ -83,7 +83,7 @@ function Space({ index, game, onOpen, pickable }) {
             <span className="space-name">{space.name}</span>
             <SpaceArt space={space} />
             {ownable && <span className="space-price">{game.mortgaged[index] ? 'MORTGAGED' : money(space.price)}</span>}
-            {space.type === 'tax' && <span className="space-price">Pay {space.choice ? '$200 or 10%' : money(space.amount)}</span>}
+            {space.type === 'tax' && <span className="space-price">Pay {money(space.amount)}</span>}
           </div>
           {owner !== null && <span className="owner-flag" title={`Owned by ${game.players[owner].name}`} />}
         </div>
@@ -128,35 +128,26 @@ function clusterSpot(k, n) {
 // where the middle of a space is on the board, in % (the corners are 1.6 times as big as the other spaces)
 const CELL = (k) => (k === 1 ? 0 : 1.6 + (k - 2)) // where row/column k starts
 const SIZE = (k) => (k === 1 || k === 11 ? 1.6 : 1)
-// a steady "random" number for a seed (so a piece stays where it landed when the screen redraws)
-const rnd = (seed, n) => {
-  const x = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453
-  return x - Math.floor(x)
-}
-// where a piece stands on a space: somewhere random on it, like a real player puts it down,
-// but off the colour band (which is on the edge facing the middle)
-function spaceCenter(i, jail, seed = 0) {
+// where a piece stands on a space: in the middle of it (the part below the colour band)
+function spaceCenter(i, jail) {
   const spot = gridSpot(i)
-  const r1 = rnd(seed, 1)
-  const r2 = rnd(seed, 2)
-  const span = (lo, hi, r) => lo + (hi - lo) * r
-  let fx = span(0.3, 0.7, r1)
-  let fy = span(0.3, 0.7, r2)
+  let fx = 0.5
+  let fy = 0.5
   if (i % 10 !== 0) {
-    if (spot.side === 'bottom') fy = span(0.42, 0.78, r2)
-    if (spot.side === 'top') fy = span(0.22, 0.58, r2)
-    if (spot.side === 'left') [fx, fy] = [span(0.22, 0.58, r1), span(0.3, 0.7, r2)]
-    if (spot.side === 'right') [fx, fy] = [span(0.42, 0.78, r1), span(0.3, 0.7, r2)]
+    if (spot.side === 'bottom') fy = 0.6
+    if (spot.side === 'top') fy = 0.4
+    if (spot.side === 'left') fx = 0.4
+    if (spot.side === 'right') fx = 0.6
   }
-  if (jail === 'in') [fx, fy] = [span(0.58, 0.74, r1), span(0.3, 0.46, r2)] // behind the bars
-  if (jail === 'visit') [fx, fy] = [span(0.2, 0.36, r1), span(0.72, 0.84, r2)] // just visiting: on the edge of the jail space
+  if (jail === 'in') [fx, fy] = [0.66, 0.38] // behind the bars
+  if (jail === 'visit') [fx, fy] = [0.28, 0.78] // just visiting: on the edge of the jail space
   return { x: ((CELL(spot.col) + SIZE(spot.col) * fx) / 12.6) * 100, y: ((CELL(spot.row) + SIZE(spot.row) * fy) / 12.6) * 100, side: spot.side }
 }
 
 // The pieces stand up on the board and hop from space to space: each step, the piece glides to the next space
 // while it jumps up in an arc and lands. (They live in their own layer so they can rise out of the board in 3D.)
 const SIDES = ['bottom', 'left', 'top', 'right']
-function TokenLayer({ game, positions, stepMs, quarter = 0 }) {
+function TokenLayer({ game, positions, stepMs, quarter = 0, teleport = null }) {
   // count every step a piece takes, so its hop plays again each time
   const last = useRef(positions)
   const hops = useRef(positions.map(() => 0))
@@ -176,13 +167,12 @@ function TokenLayer({ game, positions, stepMs, quarter = 0 }) {
       {Object.entries(groups).flatMap(([key, players]) =>
         players.map((p, k) => {
           const player = game.players[p]
-          // every landing picks a new spot on the space (the seed changes with each step)
-          const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null, hops.current[p] * 7 + p * 13 + 1)
+          const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null)
           return (
             <div
               key={p}
               // pieces look where they're going, as seen from where you sit (the board may be turned)
-              className={`piece3d walker side-${SIDES[(SIDES.indexOf(at.side) - quarter + 4) % 4]}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
+              className={`piece3d walker side-${SIDES[(SIDES.indexOf(at.side) - quarter + 4) % 4]}${teleport?.player === p ? ` teleport-${teleport.phase}` : ''}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
               style={{ '--c': player.color, left: `${at.x}%`, top: `${at.y}%`, ...clusterSpot(k, players.length) }}
             >
               <span key={`b${hops.current[p]}`} className="piece-base" />
@@ -275,7 +265,7 @@ function CardStack({ deck }) {
   )
 }
 
-export default function Board({ game, positions, onOpen, card, onCardClose, stepMs = 480, quarter = 0 }) {
+export default function Board({ game, positions, onOpen, card, onCardClose, stepMs = 480, quarter = 0, teleport = null }) {
   return (
     <div className="board">
       {SPACES.map((_, i) => (
@@ -302,7 +292,7 @@ export default function Board({ game, positions, onOpen, card, onCardClose, step
         {card && <DrawnCard key={card.id} card={card} game={game} onClose={onCardClose} />}
       </div>
       <BuildingLayer game={game} />
-      <TokenLayer game={game} positions={positions} stepMs={stepMs} quarter={quarter} />
+      <TokenLayer game={game} positions={positions} stepMs={stepMs} quarter={quarter} teleport={teleport} />
     </div>
   )
 }

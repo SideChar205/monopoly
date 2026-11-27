@@ -382,6 +382,13 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
           </div>
         </div>
 
+        {/* the players float on the table, under the Follow / End game / Quit buttons */}
+        <div className="players-rail">
+          {seatOrder.map((pi, k) => (
+            <PlayerCard key={pi} game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
+          ))}
+        </div>
+
         {/* your choices (buy, end turn, taxes, debts, jail...) or the auction, along the bottom of the table */}
         {game.phase === 'auction' && !zoomed ? (
           <div className="hud-dock auction-dock">
@@ -407,12 +414,6 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
       </main>
 
 
-      {/* the players, with their money and deeds, in their own column beside the table */}
-      <aside className="players-rail">
-        {seatOrder.map((pi, k) => (
-          <PlayerCard key={pi} game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
-        ))}
-      </aside>
 
       {sheet !== null && <PlayerSheet game={game} index={sheet} onOpen={setDeed} onClose={() => setSheet(null)} />}
       {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} onClose={() => setDeed(null)} />}

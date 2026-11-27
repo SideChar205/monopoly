@@ -232,7 +232,7 @@ function useCashChanges(players) {
   return changes
 }
 
-export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
+export default function Game({ game: latest, dispatch, onPlayAgain, onQuit, onBackToRoom, online }) {
   // `latest` is the real game; `game` is what the screen shows, which catches up step by step (see useDirector)
   const { view: game, positions, dice, card, busy: moving, focus, teleport, endFocus, closeCard } = useDirector(latest)
   // a new game starts with the "who goes first" wheel; everything waits for it (bots, the draft, the roll button)
@@ -246,8 +246,10 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
 
   const me = game.players[game.current]
   // whose move it is: in an auction, whoever's turn it is to bid
-  const actor = game.players[botActor(game)] ?? me
-  const myTurn = !actor.isBot && game.phase !== 'over'
+  const actorIndex = botActor(game) ?? game.current
+  const actor = game.players[actorIndex] ?? me
+  // online, it's only "your turn" when the move is for your seat
+  const myTurn = !actor.isBot && game.phase !== 'over' && (!online || actorIndex === online.seat)
   const canRoll = myTurn && !busy && game.phase === 'roll'
   const areaRef = useRef(null)
   const camRef = useRef(null)
@@ -289,8 +291,9 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   const zoomed = cam.s !== 1
 
   // who sits at the bottom (you): the human whose turn it is; between turns, the last human who played
-  const anchorRef = useRef(Math.max(0, game.players.findIndex((p) => !p.isBot)))
-  if (!me.isBot) anchorRef.current = game.current
+  const anchorRef = useRef(online ? online.seat : Math.max(0, game.players.findIndex((p) => !p.isBot)))
+  if (online) anchorRef.current = online.seat
+  else if (!me.isBot) anchorRef.current = game.current
   const seatOrder = game.players.map((_, k) => (anchorRef.current + k) % game.players.length)
   const roll = () => canRoll && dispatch({ type: 'ROLL' })
 
@@ -309,6 +312,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   // bots play by themselves, one action at a time
   useEffect(() => {
     if (!actor.isBot || game.phase === 'over' || busy) return
+    if (online && !online.isHost) return // online, the host's browser runs the bots
     const action = botMove(game)
     if (!action) return
     const quick = ['BUILD', 'SELL', 'MORTGAGE', 'UNMORTGAGE'].includes(action.type)
@@ -399,13 +403,14 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
             <button className={`btn small ghost follow-btn${follow ? ' on' : ''}`} title="Zoom in on each piece while it moves" onClick={toggleFollow}>
               🎥 Follow {follow ? 'on' : 'off'}
             </button>
-            {game.phase !== 'over' &&
+            {online && <span className="hud-chip room-chip" title="Game code">🌐 {online.code}</span>}
+            {game.phase !== 'over' && (!online || online.isHost) &&
               (confirmQuit === 'end' ? (
                 <button className="btn small danger" onClick={() => dispatch({ type: 'END_GAME' })}>End now?</button>
               ) : (
                 <button className="btn small ghost" title="End the game: the richest player wins" onClick={() => setConfirmQuit('end')}>End game</button>
               ))}
-            <button className="btn small ghost" onClick={onQuit}>Quit</button>
+            <button className="btn small ghost" onClick={onQuit}>{online ? 'Leave' : 'Quit'}</button>
           </div>
         </div>
 
@@ -419,7 +424,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
         {/* your choices (buy, end turn, taxes, debts, jail...) or the auction, along the bottom of the table */}
         {game.phase === 'auction' && !zoomed ? (
           <div className="hud-dock auction-dock">
-            <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} />
+            <Auction game={game} dispatch={dispatch} openDeed={setDeed} busy={busy} seat={online ? online.seat : null} />
           </div>
         ) : (
           myTurn && !busy && !zoomed && game.phase !== 'over' && !(game.phase === 'roll' && !me.inJail) && (
@@ -444,8 +449,8 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
 
       {showWheel && <OrderWheel key={game.gameId} game={game} onDone={() => setWheelSeen(game.gameId)} />}
       {sheet !== null && <PlayerSheet game={game} index={sheet} onOpen={setDeed} onClose={() => setSheet(null)} />}
-      {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} onClose={() => setDeed(null)} />}
-      {game.phase === 'over' && <GameOver game={game} onPlayAgain={onPlayAgain} onQuit={onQuit} />}
+      {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} onClose={() => setDeed(null)} seat={online ? online.seat : null} />}
+      {game.phase === 'over' && <GameOver game={game} onPlayAgain={onPlayAgain} onBackToRoom={onBackToRoom} onQuit={onQuit} online={online} />}
     </div>
   )
 }
@@ -555,14 +560,14 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
 }
 
 // the auction in the middle of the board: everyone sees it; the bidder whose turn it is raises or drops out
-function Auction({ game, dispatch, openDeed, busy }) {
+function Auction({ game, dispatch, openDeed, busy, seat = null }) {
   const a = game.auction
   const who = auctionBidder(game)
   const bidder = game.players[who]
   const space = SPACES[a.space]
   const [amount, setAmount] = useState('')
   useEffect(() => setAmount(''), [who, a.bid])
-  const human = !bidder.isBot && !busy
+  const human = !bidder.isBot && !busy && (seat === null || seat === who) // online: only on the bidder's own screen
   const isLeader = who === a.leader
   const bid = (n) => dispatch({ type: 'BID', amount: n, player: who })
   const raises = [1, 10, 50, 100].map((n) => a.bid + n).filter((n) => n <= bidder.cash)
@@ -666,7 +671,7 @@ function SideCard({ card, game, onClose }) {
   )
 }
 
-function GameOver({ game, onPlayAgain, onQuit }) {
+function GameOver({ game, onPlayAgain, onBackToRoom, onQuit, online }) {
   const winner = game.players[game.winner]
   return (
     <div className="overlay">
@@ -684,8 +689,10 @@ function GameOver({ game, onPlayAgain, onQuit }) {
           ))}
         </ol>
         <div className="prompt-buttons">
-          <button className="btn primary" onClick={onPlayAgain}>Play again</button>
-          <button className="btn" onClick={onQuit}>Change players</button>
+          {onPlayAgain && <button className="btn primary" onClick={onPlayAgain}>Play again</button>}
+          {onBackToRoom && <button className="btn" onClick={onBackToRoom}>Back to the room</button>}
+          {!onPlayAgain && online && <p className="muted small">Waiting for the host…</p>}
+          <button className="btn" onClick={onQuit}>{online ? 'Leave' : 'Change players'}</button>
         </div>
         <p className="muted small">{activePlayers(game).length > 1 ? 'Ranked by net worth: cash + property + buildings.' : ''}</p>
       </div>

@@ -4,13 +4,14 @@ import { canBuild, canSell, canMortgage, canUnmortgage, canManage, ownsGroup, ho
 const money = (n) => `$${n.toLocaleString('en-US')}`
 
 // The title card for a property: its rents, who owns it, and (for the owner, on their turn) what they can do with it
-export default function Deed({ index, game, dispatch, onClose }) {
+export default function Deed({ index, game, dispatch, onClose, seat = null }) {
   const space = SPACES[index]
   const owner = game.owners[index]
   const color = space.group ? GROUPS[space.group].color : '#334155'
   // the owner can build, sell and mortgage at any time (rulebook), as long as they're a person (bots manage themselves)
   const viewer = owner
-  const mine = owner !== null && !game.players[owner].isBot && canManage(game, owner)
+  // online, only your own properties (seat = your seat)
+  const mine = owner !== null && !game.players[owner].isBot && canManage(game, owner) && (seat === null || seat === owner)
   const owes = game.phase === 'debt' && game.debt?.player === owner // can raise money, not spend it
   const h = game.houses[index]
 

@@ -8,6 +8,16 @@ Version numbers are MAJOR.MINOR.PATCH:
 
 Below 1.0 the game is in beta (not launched yet).
 
+## 0.13.0
+
+- New: **online games** for the board game. Create a game, send the invite link (or the 5-letter code), and play with friends on their own devices, on any network. Empty seats can be bots.
+  - Waiting room: ready up, change your name, the host picks the starting money and the rules (everyone sees them), the host can remove players.
+  - The host's browser runs the game and the bots; every move from a guest is checked (your turn, your bid, only your own properties).
+  - Drop out and a bot takes over; rejoin from the same browser to take your seat back.
+  - After a game: Play again, or Back to the room.
+- Online works on the deployed site (Vercel); on `npm run dev` only people on your Wi-Fi can open the link.
+- Deal mode is still local only (coming next).
+
 ## 0.12.0
 
 - New: a **"Who goes first?" wheel** spins at the start of every game, stops on the first player, then shows the play order (round the table from them). Click to skip. Everything (bots, the card draft, the roll button) waits for it.

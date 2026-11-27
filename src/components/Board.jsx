@@ -128,6 +128,7 @@ function clusterSpot(k, n) {
 // where the middle of a space is on the board, in % (the corners are 1.6 times as big as the other spaces)
 const CELL = (k) => (k === 1 ? 0 : 1.6 + (k - 2)) // where row/column k starts
 const SIZE = (k) => (k === 1 || k === 11 ? 1.6 : 1)
+const BOARD_UNITS = 1.6 + 9 + 1.6 // two corners and nine spaces across (12.2)
 // where a piece stands on a space: in the middle of it (the part below the colour band)
 function spaceCenter(i, jail) {
   const spot = gridSpot(i)
@@ -139,9 +140,10 @@ function spaceCenter(i, jail) {
     if (spot.side === 'left') fx = 0.4
     if (spot.side === 'right') fx = 0.6
   }
-  if (jail === 'in') [fx, fy] = [0.66, 0.38] // behind the bars
-  if (jail === 'visit') [fx, fy] = [0.28, 0.78] // just visiting: on the edge of the jail space
-  return { x: ((CELL(spot.col) + SIZE(spot.col) * fx) / 12.6) * 100, y: ((CELL(spot.row) + SIZE(spot.row) * fy) / 12.6) * 100, side: spot.side }
+  // the jail corner is the exception: in jail you stand inside the cell, just visiting you stand on the strip around it
+  if (jail === 'in') [fx, fy] = [0.66, 0.42] // inside the cell, behind the bars
+  if (jail === 'visit') [fx, fy] = [0.16, 0.84] // on the Just Visiting strip, in the corner
+  return { x: ((CELL(spot.col) + SIZE(spot.col) * fx) / BOARD_UNITS) * 100, y: ((CELL(spot.row) + SIZE(spot.row) * fy) / BOARD_UNITS) * 100, side: spot.side }
 }
 
 // The pieces stand up on the board and hop from space to space: each step, the piece glides to the next space

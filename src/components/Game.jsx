@@ -6,6 +6,7 @@ import Board, { Token } from './Board.jsx'
 import { Question, Chest } from './Art.jsx'
 import Deed from './Deed.jsx'
 import ScreenDice from './ScreenDice.jsx'
+import OrderWheel from './OrderWheel.jsx'
 import { HoldingsStrip, PlayerSheet } from './Holdings.jsx'
 
 const money = (n) => `$${n.toLocaleString('en-US')}`
@@ -233,7 +234,11 @@ function useCashChanges(players) {
 
 export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   // `latest` is the real game; `game` is what the screen shows, which catches up step by step (see useDirector)
-  const { view: game, positions, dice, card, busy, focus, teleport, endFocus, closeCard } = useDirector(latest)
+  const { view: game, positions, dice, card, busy: moving, focus, teleport, endFocus, closeCard } = useDirector(latest)
+  // a new game starts with the "who goes first" wheel; everything waits for it (bots, the draft, the roll button)
+  const [wheelSeen, setWheelSeen] = useState(null)
+  const showWheel = !!game.gameId && wheelSeen !== game.gameId && game.turn === 1 && game.rollId === 0 && game.phase !== 'over'
+  const busy = moving || showWheel
   const cashChanges = useCashChanges(game.players)
   const [deed, setDeed] = useState(null)
   const [sheet, setSheet] = useState(null) // which player's property window is open
@@ -437,6 +442,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
 
 
 
+      {showWheel && <OrderWheel key={game.gameId} game={game} onDone={() => setWheelSeen(game.gameId)} />}
       {sheet !== null && <PlayerSheet game={game} index={sheet} onOpen={setDeed} onClose={() => setSheet(null)} />}
       {deed !== null && <Deed index={deed} game={game} dispatch={dispatch} onClose={() => setDeed(null)} />}
       {game.phase === 'over' && <GameOver game={game} onPlayAgain={onPlayAgain} onQuit={onQuit} />}

@@ -572,21 +572,10 @@ function startTurnOf(s, p) {
 
 // ---------------- new game ----------------
 
-// rulebook: everyone rolls, the highest total goes first (ties roll again)
-function rollForOrder(seats) {
-  let contenders = seats.map((_, i) => i)
-  const log = []
-  while (contenders.length > 1) {
-    const rolls = contenders.map((i) => ({ i, total: rollDie() + rollDie() }))
-    const best = Math.max(...rolls.map((r) => r.total))
-    log.push(rolls.map((r) => `${seats[r.i].name} ${r.total}`).join(', '))
-    contenders = rolls.filter((r) => r.total === best).map((r) => r.i)
-  }
-  return { first: contenders[0] ?? 0, log }
-}
 
 export function newGame({ seats, startingCash = STARTING_CASH, settings: chosen }) {
-  const order = rollForOrder(seats)
+  // who goes first: picked at random (the start screen shows it as a spinning wheel); play then goes round the table
+  const order = { first: Math.floor(Math.random() * Math.max(1, seats.length)) }
   const settings = { ...DEFAULT_SETTINGS, ...chosen }
   const cards = deckCards(settings)
   // Card Draft: snake order starting with the first player (A B C, C B A, ...)
@@ -635,9 +624,8 @@ export function newGame({ seats, startingCash = STARTING_CASH, settings: chosen 
     turn: 1,
     auction: null,
     auctionQueue: null,
-    log: seats.length
-      ? [`${seats[order.first].name} rolled highest and goes first`, ...order.log.reverse().map((l) => `Rolling for first turn: ${l}`)]
-      : [],
+    gameId: Math.random().toString(36).slice(2), // a new id for every game (the first-player wheel spins once per game)
+    log: seats.length ? [`The wheel picks ${seats[order.first].name} to go first`] : [],
     winner: null,
     standings: null,
     endReason: null,

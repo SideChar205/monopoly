@@ -1332,3 +1332,24 @@ button:disabled { cursor: not-allowed; }
 /* ================= Corners face outwards, each towards its own corner of the table ================= */
 .t-rest .corner-art { transform: rotate(135deg); }     /* Town Square: top-left */
 .t-gotojail .corner-art { transform: rotate(-135deg); } /* Go To Jail: top-right */
+
+/* ================= "Who goes first?" wheel ================= */
+.order-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(2, 6, 23, .62); animation: fade .25s ease; cursor: pointer; }
+.order-card { width: min(440px, 92vw); padding: 22px 24px 18px; border-radius: 24px; text-align: center; background: linear-gradient(#0f1f33, #0b1626); border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 30px 80px rgba(0, 0, 0, .6); animation: popIn .4s cubic-bezier(.2, .9, .3, 1.3); }
+.order-card h2 { margin: 0 0 12px; font-size: 24px; color: #fde68a; letter-spacing: .02em; }
+.wheel-wrap { position: relative; width: min(300px, 70vw); aspect-ratio: 1; margin: 0 auto; }
+.wheel { width: 100%; height: 100%; display: block; transition-property: transform; transition-timing-function: cubic-bezier(.12, .7, .12, 1); filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .5)); }
+.wheel-rim { fill: #fbbf24; stroke: #78350f; stroke-width: 4; }
+.wheel-slice { stroke: #fff; stroke-width: 2; }
+.wheel-name { font-size: 11px; font-weight: 900; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: rgba(0, 0, 0, .45); stroke-width: 2.5px; }
+.wheel-hub { fill: #fff; stroke: #78350f; stroke-width: 4; }
+.wheel-pointer { position: absolute; left: 50%; top: -10px; z-index: 2; width: 0; height: 0; transform: translateX(-50%); border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 26px solid #ef4444; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .5)); }
+.order-result { min-height: 128px; margin-top: 14px; opacity: 0; transform: translateY(8px); transition: opacity .35s ease, transform .35s ease; }
+.order-result.show { opacity: 1; transform: none; }
+.order-winner { margin: 0 0 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 20px; font-weight: 900; color: #fff; }
+.order-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.order-list li { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c) 70%, transparent); font-weight: 800; font-size: 13px; color: #fff; }
+.order-result.show .order-list li { animation: popIn .35s cubic-bezier(.2, .9, .3, 1.3) backwards; animation-delay: calc(var(--k) * 90ms + .15s); }
+.order-no { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--c); font-size: 11px; }
+.order-skip { margin: 12px 0 0; font-size: 12px; color: #94a3b8; }
+@keyframes popIn { from { opacity: 0; transform: scale(.6); } }

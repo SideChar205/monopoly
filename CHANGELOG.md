@@ -8,6 +8,11 @@ Version numbers are MAJOR.MINOR.PATCH:
 
 Below 1.0 the game is in beta (not launched yet).
 
+## 0.12.0
+
+- New: a **"Who goes first?" wheel** spins at the start of every game, stops on the first player, then shows the play order (round the table from them). Click to skip. Everything (bots, the card draft, the roll button) waits for it.
+- The first player is now picked at random by the wheel (instead of a hidden dice roll-off).
+
 ## 0.11.1
 
 - Fixed: a piece could blink straight to the next space (for example when leaving Start) instead of hopping. The pieces are now always drawn in the same order, so the browser never interrupts their glide.

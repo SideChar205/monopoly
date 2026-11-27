@@ -112,35 +112,48 @@ export const PIECES = [
 
 export const pieceById = (id) => PIECES.find((p) => p.id === id) ?? PIECES[0]
 
-// a piece drawn in silver, standing on a round base in the player's color
+// mix a #rrggbb colour towards another colour (t = 0..1)
+function mix(hex, to, t) {
+  const a = hex.replace('#', '')
+  const b = to.replace('#', '')
+  const ch = (h, i) => parseInt(h.slice(i, i + 2), 16)
+  const out = [0, 2, 4].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t))
+  return `#${out.map((v) => v.toString(16).padStart(2, '0')).join('')}`
+}
+
+// the shades of a metal piece: silver when there's no colour, otherwise cast in the player's colour
+export function metalShades(color) {
+  if (!color) return { hi: '#ffffff', light: '#d9dee6', mid: '#97a3b6', shine: '#e6eaf0', low: '#8a96a8', line: '#334155', side: '#5b6b82', sideLine: '#3b4a5f', back: '#334155' }
+  return {
+    hi: mix(color, '#ffffff', 0.8),
+    light: mix(color, '#ffffff', 0.4),
+    mid: color,
+    shine: mix(color, '#ffffff', 0.55),
+    low: mix(color, '#000000', 0.3),
+    line: mix(color, '#000000', 0.72),
+    side: mix(color, '#000000', 0.42),
+    sideLine: mix(color, '#000000', 0.6),
+    back: mix(color, '#000000', 0.62),
+  }
+}
+
+// a piece drawn as shiny metal in the player's colour (silver if no colour is given)
 export function PieceIcon({ id, color, size }) {
   const uid = useId().replace(/:/g, '')
   const piece = pieceById(id)
+  const m = metalShades(color)
   return (
     <svg className="piece" viewBox="0 0 64 64" width={size} height={size} aria-label={piece.name} role="img">
       <defs>
         <linearGradient id={`m${uid}`} x1="0" y1="0" x2="0.35" y2="1">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset=".35" stopColor="#d9dee6" />
-          <stop offset=".6" stopColor="#97a3b6" />
-          <stop offset=".85" stopColor="#e6eaf0" />
-          <stop offset="1" stopColor="#8a96a8" />
+          <stop offset="0" stopColor={m.hi} />
+          <stop offset=".35" stopColor={m.light} />
+          <stop offset=".6" stopColor={m.mid} />
+          <stop offset=".85" stopColor={m.shine} />
+          <stop offset="1" stopColor={m.low} />
         </linearGradient>
-        <radialGradient id={`b${uid}`} cx=".4" cy=".35" r=".7">
-          <stop offset="0" stopColor="#fff" stopOpacity=".55" />
-          <stop offset=".45" stopColor={color} />
-          <stop offset="1" stopColor={color} stopOpacity=".75" />
-        </radialGradient>
       </defs>
-      {color && <circle cx="32" cy="32" r="31" fill={`url(#b${uid})`} stroke="rgba(0,0,0,.35)" strokeWidth="1.5" />}
-      <g
-        className="metal"
-        transform={color ? 'translate(6.4 6.4) scale(.8)' : undefined}
-        fill={`url(#m${uid})`}
-        stroke="#334155"
-        strokeWidth={color ? 2.6 : 2}
-        strokeLinejoin="round"
-      >
+      <g className="metal" fill={`url(#m${uid})`} stroke={m.line} strokeWidth="2" strokeLinejoin="round">
         {piece.draw}
       </g>
     </svg>
@@ -148,14 +161,15 @@ export function PieceIcon({ id, color, size }) {
 }
 
 // A piece with real thickness: the same shape stacked in thin layers, front to back, like a cast metal token.
-// The front layer is shiny silver, the layers behind it are the darker metal you see on the sides.
+// The front layer is the shiny face; the layers behind it are the darker metal you see on the sides.
 const LAYERS = 9
-export function Piece3D({ id }) {
+export function Piece3D({ id, color }) {
+  const m = metalShades(color)
   return (
-    <span className="piece3d-body">
+    <span className="piece3d-body" style={{ '--side': m.side, '--side-line': m.sideLine, '--back': m.back, '--line': m.line }}>
       {Array.from({ length: LAYERS }, (_, i) => (
         <span key={i} className={`piece-layer${i === 0 ? ' front' : i === LAYERS - 1 ? ' back' : ' side'}`} style={{ '--z': i }}>
-          <PieceIcon id={id} />
+          <PieceIcon id={id} color={color} />
         </span>
       ))}
     </span>

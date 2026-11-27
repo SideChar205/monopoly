@@ -1116,3 +1116,11 @@ button:disabled { cursor: not-allowed; }
   100% { transform: rotateX(calc(-1 * var(--tilt))) rotateY(var(--turn, -32deg)) translateY(0) scale(1); }
 }
 @keyframes hopShade { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(.45); opacity: .3; } 88% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+
+/* ================= Pieces are cast in the player's colour (nothing coloured underneath) ================= */
+.piece-layer.front .metal { stroke: var(--line, #1e293b); stroke-width: 2.4; }
+.piece-layer.side .metal, .piece-layer.side .metal * { fill: var(--side, #5b6b82) !important; stroke: var(--side-line, #3b4a5f) !important; }
+.piece-layer.back .metal, .piece-layer.back .metal * { fill: var(--back, #334155) !important; stroke: var(--line, #1e293b) !important; }
+.piece-base, .piece3d.current .piece-base { background: radial-gradient(ellipse, rgba(0, 0, 0, .5), transparent 70%) !important; box-shadow: none !important; }
+/* whose turn it is: a soft white glow around the piece (and its gentle bob) */
+.walker.current .piece-figure { filter: drop-shadow(0 0 .1em rgba(255, 255, 255, .95)) drop-shadow(0 0 .3em rgba(255, 255, 255, .55)); }

@@ -151,7 +151,7 @@ function TokenLayer({ game, positions, stepMs }) {
             >
               <span key={`b${hops.current[p]}`} className="piece-base" />
               <span key={`f${hops.current[p]}`} className="piece-figure">
-                <Piece3D id={player.piece} />
+                <Piece3D id={player.piece} color={player.color} />
               </span>
             </div>
           )

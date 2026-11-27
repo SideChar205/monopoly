@@ -8,6 +8,10 @@ Version numbers are MAJOR.MINOR.PATCH:
 
 Below 1.0 the game is in beta (not launched yet).
 
+## 0.11.1
+
+- Fixed: a piece could blink straight to the next space (for example when leaving Start) instead of hopping. The pieces are now always drawn in the same order, so the browser never interrupts their glide.
+
 ## 0.11.0
 
 - New rule: **Teleport** (on by default). A piece sent far by a card (more than 6 spaces), to jail, or by a swap teleports there instead of hopping every space.

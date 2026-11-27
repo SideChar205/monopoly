@@ -158,33 +158,35 @@ function TokenLayer({ game, positions, stepMs, quarter = 0, teleport = null }) {
   })
   last.current = positions
 
+  // who shares a space (for the little cluster when several pieces stand together)
   const groups = {}
-  positions.forEach((pos, p) => {
-    if (game.players[p].out) return
-    const key = pos === 10 ? (game.players[p].inJail ? 'jail-in' : 'jail-visit') : String(pos)
-    ;(groups[key] ??= []).push(p)
+  const keyOf = (p) => (positions[p] === 10 ? (game.players[p].inJail ? 'jail-in' : 'jail-visit') : String(positions[p]))
+  positions.forEach((_, p) => {
+    if (!game.players[p].out) (groups[keyOf(p)] ??= []).push(p)
   })
+  // the pieces are always drawn in player order: if they were reordered when one moves to another space,
+  // the browser would take it out and put it back, which skips its glide (it would "blink" to the new space)
   return (
     <div className="token-layer walkers" aria-hidden="true" style={{ '--step': `${stepMs}ms` }}>
-      {Object.entries(groups).flatMap(([key, players]) =>
-        players.map((p, k) => {
-          const player = game.players[p]
-          const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null)
-          return (
-            <div
-              key={p}
-              // pieces look where they're going, as seen from where you sit (the board may be turned)
-              className={`piece3d walker side-${SIDES[(SIDES.indexOf(at.side) - quarter + 4) % 4]}${teleport?.player === p ? ` teleport-${teleport.phase}` : ''}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
-              style={{ '--c': player.color, left: `${at.x}%`, top: `${at.y}%`, ...clusterSpot(k, players.length) }}
-            >
-              <span key={`b${hops.current[p]}`} className="piece-base" />
-              <span key={`f${hops.current[p]}`} className="piece-figure">
-                <Piece3D id={player.piece} color={player.color} />
-              </span>
-            </div>
-          )
-        }),
-      )}
+      {game.players.map((player, p) => {
+        if (player.out) return null
+        const key = keyOf(p)
+        const group = groups[key]
+        const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null)
+        return (
+          <div
+            key={p}
+            // pieces look where they're going, as seen from where you sit (the board may be turned)
+            className={`piece3d walker side-${SIDES[(SIDES.indexOf(at.side) - quarter + 4) % 4]}${teleport?.player === p ? ` teleport-${teleport.phase}` : ''}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
+            style={{ '--c': player.color, left: `${at.x}%`, top: `${at.y}%`, ...clusterSpot(group.indexOf(p), group.length) }}
+          >
+            <span key={`b${hops.current[p]}`} className="piece-base" />
+            <span key={`f${hops.current[p]}`} className="piece-figure">
+              <Piece3D id={player.piece} color={player.color} />
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }

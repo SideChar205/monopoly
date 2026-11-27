@@ -44,6 +44,8 @@ export default function Setup({ initial, onStart }) {
           <div className="logo">
             <span className="logo-house" aria-hidden="true" />
             LANDLORD
+            {/* not launched yet: a beta version (below 1.0) */}
+            <span className="beta-tag" title={`Version ${__APP_VERSION__}, not launched yet`}>BETA</span>
           </div>
           <p>{mode === 'deal' ? 'Collect property sets, charge rent and steal deals. First to 3 complete sets wins.' : 'Roll the dice, buy the town, build houses and hotels, and send your rivals broke.'}</p>
         </header>
@@ -153,6 +155,7 @@ export default function Setup({ initial, onStart }) {
           Start game
         </button>
         <p className="fine-print">{mode === 'deal' ? '106 cards: money, properties, wildcards, rent and action cards.' : 'Classic rules from the official rulebook.'}</p>
+        <p className="version">Version {__APP_VERSION__} · Beta</p>
       </div>
     </div>
   )

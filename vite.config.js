@@ -1,4 +1,5 @@
 import os from 'node:os'
+import fs from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -22,6 +23,8 @@ function lanAddress() {
 }
 
 const LAN_URL = `http://${lanAddress()}:${PORT}`
+// the version shown on the start screen comes from package.json (change it there)
+const VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
 
 export default defineConfig({
   plugins: [react()],
@@ -32,5 +35,5 @@ export default defineConfig({
   },
   preview: { port: PORT, host: true },
   // the app uses this to build invite links that work for friends, even if you opened localhost
-  define: { __LAN_URL__: JSON.stringify(LAN_URL) },
+  define: { __LAN_URL__: JSON.stringify(LAN_URL), __APP_VERSION__: JSON.stringify(VERSION) },
 })

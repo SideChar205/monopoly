@@ -162,7 +162,7 @@ export function PieceIcon({ id, color, size }) {
 
 // A piece with real thickness: the same shape stacked in thin layers, front to back, like a cast metal token.
 // The front layer is the shiny face; the layers behind it are the darker metal you see on the sides.
-const LAYERS = 9
+const LAYERS = 7
 export function Piece3D({ id, color }) {
   const m = metalShades(color)
   return (

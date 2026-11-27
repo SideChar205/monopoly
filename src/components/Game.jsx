@@ -3,6 +3,7 @@ import { SPACES, GROUPS, JAIL_FINE, groupMembers } from '../game/board.js'
 import { activePlayers, netWorth, propertiesOf, auctionBidder } from '../game/rules.js'
 import { botMove, botActor } from '../game/bot.js'
 import Board, { Token } from './Board.jsx'
+import { Question, Chest } from './Art.jsx'
 import Deed from './Deed.jsx'
 import ScreenDice from './ScreenDice.jsx'
 import { HoldingsStrip, PlayerSheet } from './Holdings.jsx'
@@ -306,6 +307,13 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
 
   return (
     <div className="game-page">
+      {/* the players, with their money and deeds, in their own column beside the table */}
+      <aside className="players-rail">
+        {seatOrder.map((pi, k) => (
+          <PlayerCard key={pi} game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
+        ))}
+      </aside>
+
       <main className={`table-area${zoomed ? ' zoomed' : ''}`} ref={areaRef}>
         {/* the board lies on the table, seen at an angle: the dice roll on it and the cards come off its piles */}
         <div className="camera" ref={camRef} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.s})` }}>
@@ -317,8 +325,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
               game={game}
               positions={positions}
               onOpen={setDeed}
-              card={card}
-              onCardClose={closeCard}
+              card={null}
               stepMs={HOP_MS}
               quarter={quarter}
             />
@@ -338,15 +345,15 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
             </span>
           </button>
         )}
-        {/* everyone sits around the board, their deeds and money on the table in front of them */}
+        {/* where everyone "sits" around the table (invisible): the dice are thrown from the roller's side */}
         {seatOrder.map((pi, k) => (
-          <div key={pi} data-seat={pi} className={`seat-spot ${SEAT_LAYOUTS[seatOrder.length][k]}`}>
-            <PlayerCard game={game} index={pi} change={cashChanges[pi]} onOpen={setDeed} onSheet={() => setSheet(pi)} you={k === 0 && !game.players[pi].isBot} />
-          </div>
+          <div key={pi} data-seat={pi} className={`seat-spot seat-anchor ${SEAT_LAYOUTS[seatOrder.length][k]}`} aria-hidden="true" />
         ))}
       </main>
 
       <aside className="side">
+        {/* a drawn card is shown here, in its own spot (never on the board, so nothing covers it) */}
+        {card && <SideCard key={card.id} card={card} game={game} onClose={closeCard} />}
         <div className="side-top">
           <span className="turn-no">Turn {game.turn}</span>
           <div className="side-buttons">
@@ -583,6 +590,24 @@ function PlayerCard({ game, index, change, onOpen, onSheet, you }) {
       </button>
       {!p.out && <HoldingsStrip game={game} player={index} onOpen={onOpen} />}
     </div>
+  )
+}
+
+// the Fortune / Town Fund card that was just drawn: it flips over in the side panel
+function SideCard({ card, game, onClose }) {
+  const fortune = card.deck === 'fortune'
+  return (
+    <button className={`side-card ${card.deck}`} onClick={onClose} title="Click to close">
+      <span className="side-card-inner">
+        <span className="side-card-back">{fortune ? <Question /> : <Chest />}</span>
+        <span className="side-card-front">
+          <span className="card-title">{fortune ? 'FORTUNE' : 'TOWN FUND'}</span>
+          <span className="card-pic">{fortune ? <Question /> : <Chest />}</span>
+          <span className="card-text">{card.text}</span>
+          <span className="card-who">{game.players[card.player].name}</span>
+        </span>
+      </span>
+    </button>
   )
 }
 

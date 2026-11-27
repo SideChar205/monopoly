@@ -149,7 +149,7 @@ function TokenLayer({ game, positions, stepMs, quarter = 0 }) {
               key={p}
               // pieces look where they're going, as seen from where you sit (the board may be turned)
               className={`piece3d walker side-${SIDES[(SIDES.indexOf(at.side) - quarter + 4) % 4]}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
-              style={{ '--c': player.color, left: `${at.x}%`, top: `${at.y}%`, ...clusterSpot(k, players.length) }}
+              style={{ '--c': player.color, '--x': at.x, '--y': at.y, ...clusterSpot(k, players.length) }}
             >
               <span key={`b${hops.current[p]}`} className="piece-base" />
               <span key={`f${hops.current[p]}`} className="piece-figure">

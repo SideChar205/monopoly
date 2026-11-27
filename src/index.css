@@ -1134,3 +1134,53 @@ button:disabled { cursor: not-allowed; }
   transition: left var(--step) cubic-bezier(.45, .05, .55, .95), top var(--step) cubic-bezier(.45, .05, .55, .95);
 }
 .model-stand { transform: rotateZ(calc(-1 * var(--spin))); }
+
+/* ================= Layout: players in their own column, the table holds only the board ================= */
+.game-page { grid-template-columns: 270px minmax(0, 1fr) 320px; }
+:root { --board: min(calc((100vh - 40px) * .9), calc(100vw - 270px - 320px - 64px - 60px), 1000px); }
+.table-area { padding: 24px; }
+.players-rail { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 32px); overflow-y: auto; padding-right: 2px; }
+.players-rail .seat { width: auto; min-width: 0; max-width: none; backdrop-filter: none; background: rgba(15, 23, 42, .9); }
+.players-rail .seat.turn { transform: none; }
+.seat-anchor { width: 1px; height: 1px; pointer-events: none; visibility: hidden; }
+.seat-spot.seat-anchor.bottom { bottom: 0; } .seat-spot.seat-anchor.top { top: 0; }
+.seat-spot.seat-anchor.left { left: 0; } .seat-spot.seat-anchor.right { right: 0; }
+
+/* ================= The drawn card, in the side panel ================= */
+.side-card { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; perspective: 900px; margin-bottom: 12px; animation: sideCardIn .45s cubic-bezier(.2, .9, .3, 1.2); }
+.side-card-inner { position: relative; display: block; height: 220px; transform-style: preserve-3d; animation: sideCardFlip .7s .15s cubic-bezier(.3, .7, .3, 1) both; }
+.side-card-back, .side-card-front { position: absolute; inset: 0; border-radius: 14px; backface-visibility: hidden; box-shadow: 0 16px 34px rgba(0, 0, 0, .45); }
+.side-card-back { display: grid; place-items: center; border: 6px solid #fff; transform: rotateY(180deg); }
+.side-card-back .art { width: 34%; height: 60%; max-height: none; }
+.side-card.fortune .side-card-back { background: repeating-linear-gradient(45deg, #f97316 0 10px, #ea580c 10px 20px); }
+.side-card.fund .side-card-back { background: repeating-linear-gradient(45deg, #3b82f6 0 10px, #2563eb 10px 20px); }
+.side-card-front { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 14px 18px; text-align: center; color: #111; border: 3px solid #111; }
+.side-card.fortune .side-card-front { background: linear-gradient(#fff7ed, #ffedd5); }
+.side-card.fund .side-card-front { background: linear-gradient(#eff6ff, #dbeafe); }
+.side-card .card-title { font-weight: 900; letter-spacing: .14em; font-size: 15px; }
+.side-card.fortune .card-title { color: #c2410c; }
+.side-card.fund .card-title { color: #1d4ed8; }
+.side-card .card-pic .art { width: 46px; height: 46px; max-height: none; }
+.side-card .card-text { font-size: 17px; font-weight: 800; line-height: 1.25; }
+.side-card .card-who { font-size: 12px; color: #475569; }
+@keyframes sideCardIn { from { opacity: 0; transform: translateY(-16px) scale(.9); } }
+@keyframes sideCardFlip { from { transform: rotateY(180deg); } to { transform: rotateY(0); } }
+
+/* ================= Smoother animation ================= */
+/* pieces glide with `translate` (the graphics card moves them; no page layout every frame) */
+.token-layer.walkers { container-type: size; }
+.walker {
+  left: 0; top: 0;
+  translate: calc(var(--x) * 1cqw) calc(var(--y) * 1cqh);
+  transition: translate var(--step) cubic-bezier(.45, .05, .55, .95), transform .9s cubic-bezier(.4, .1, .25, 1);
+}
+/* the board's turn and the pieces' counter-turn: plain transform transitions (also done by the graphics card) */
+.board-tilt { transition: transform .9s cubic-bezier(.4, .1, .25, 1); }
+.model-stand { transition: transform .9s cubic-bezier(.4, .1, .25, 1); }
+/* no shadow filters on the moving pieces (they made every frame repaint); the soft shadow under them stays */
+.piece-figure, .walker .piece-figure, .walker.current .piece-figure, .piece3d.current .piece-figure { filter: none; }
+
+.scene-box > .scene { zoom: 1.5; transform: scale(calc(1 / 1.5)); }
+.players-rail .player-name { min-width: 0; }
+.players-rail .player-name strong { display: flex; align-items: center; min-width: 0; white-space: nowrap; }
+.players-rail .you-tag { flex: none; }

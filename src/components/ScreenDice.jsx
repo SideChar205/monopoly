@@ -114,7 +114,7 @@ export default function ScreenDice({ dice, seed = 0, onRoll, areaRef, roller = 0
     if (hidden) return
     const go = () => areaRef.current && setM(measure(areaRef.current, roller))
     go()
-    const again = [60, 250, 700].map((ms) => setTimeout(go, ms))
+    const again = [60, 250, 700, 1150].map((ms) => setTimeout(go, ms)) // (the board may still be turning back)
     window.addEventListener('resize', go)
     return () => {
       again.forEach(clearTimeout)

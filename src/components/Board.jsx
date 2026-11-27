@@ -122,7 +122,8 @@ function spaceCenter(i, jail) {
 
 // The pieces stand up on the board and hop from space to space: each step, the piece glides to the next space
 // while it jumps up in an arc and lands. (They live in their own layer so they can rise out of the board in 3D.)
-function TokenLayer({ game, positions, stepMs }) {
+const SIDES = ['bottom', 'left', 'top', 'right']
+function TokenLayer({ game, positions, stepMs, quarter = 0 }) {
   // count every step a piece takes, so its hop plays again each time
   const last = useRef(positions)
   const hops = useRef(positions.map(() => 0))
@@ -146,7 +147,8 @@ function TokenLayer({ game, positions, stepMs }) {
           return (
             <div
               key={p}
-              className={`piece3d walker side-${at.side}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
+              // pieces look where they're going, as seen from where you sit (the board may be turned)
+              className={`piece3d walker side-${SIDES[(SIDES.indexOf(at.side) - quarter + 4) % 4]}${p === game.current ? ' current' : ''}${player.inJail ? ' jailed' : ''}`}
               style={{ '--c': player.color, left: `${at.x}%`, top: `${at.y}%`, ...clusterSpot(k, players.length) }}
             >
               <span key={`b${hops.current[p]}`} className="piece-base" />
@@ -239,7 +241,7 @@ function CardStack({ deck }) {
   )
 }
 
-export default function Board({ game, positions, onOpen, card, onCardClose, stepMs = 480 }) {
+export default function Board({ game, positions, onOpen, card, onCardClose, stepMs = 480, quarter = 0 }) {
   return (
     <div className="board">
       {SPACES.map((_, i) => (
@@ -266,7 +268,7 @@ export default function Board({ game, positions, onOpen, card, onCardClose, step
         {card && <DrawnCard key={card.id} card={card} game={game} onClose={onCardClose} />}
       </div>
       <BuildingLayer game={game} />
-      <TokenLayer game={game} positions={positions} stepMs={stepMs} />
+      <TokenLayer game={game} positions={positions} stepMs={stepMs} quarter={quarter} />
     </div>
   )
 }

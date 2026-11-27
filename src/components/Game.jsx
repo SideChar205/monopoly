@@ -136,7 +136,7 @@ function useDirector(game) {
 
 // ---- camera: zoom in on the piece that's moving and follow it, then pull back to the whole board ----
 const ZOOM = 2.4
-function useCamera({ areaRef, camRef, positions, focus }) {
+function useCamera({ areaRef, camRef, positions, focus, quarter = 0 }) {
   const [cam, setCam] = useState({ x: 0, y: 0, s: 1 })
   const spots = useRef(null) // where every space is on screen when the camera is at rest
   const stale = useRef(true)
@@ -182,7 +182,8 @@ function useCamera({ areaRef, camRef, positions, focus }) {
       }
       return
     }
-    const p = m.spaces[at]
+    // with the board turned a quarter, a space sits where (at - 10) used to be, and so on
+    const p = m.spaces[(at - 10 * quarter + 40) % 40]
     if (!p) return
     // the camera scales from its own top-left corner: move it so the space ends up in the middle of the table
     const C = { x: camEl.offsetLeft, y: camEl.offsetTop }
@@ -197,7 +198,7 @@ function useCamera({ areaRef, camRef, positions, focus }) {
     x = clamp(x, m.w - mx - C.x - s * (m.board.r - C.x), mx - C.x - s * (m.board.l - C.x))
     y = clamp(y, m.h - my - C.y - s * (m.board.b - C.y), my - C.y - s * (m.board.t - C.y))
     setCam({ x, y, s })
-  }, [at, focus]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [at, focus, quarter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return cam
 }
@@ -252,7 +253,22 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
   useEffect(() => {
     if (canRoll) endFocus()
   }, [canRoll]) // eslint-disable-line react-hooks/exhaustive-deps
-  const cam = useCamera({ areaRef, camRef, positions, focus: follow ? focus : null })
+  // while following a piece, the board turns so the side it's on faces you (its names and prices read the right way up)
+  const followAt = follow && focus !== null ? positions[focus] : null
+  const [spin, setSpin] = useState(0) // degrees, in quarter turns
+  useEffect(() => {
+    if (followAt === null) return setSpin((a) => Math.round(a / 360) * 360) // back to normal, the short way
+    if (followAt % 10 === 0) return // corners: keep the turn we have
+    const side = Math.floor(followAt / 10) // 0 bottom, 1 left, 2 top, 3 right
+    setSpin((a) => {
+      const now = (((-a / 90) % 4) + 4) % 4
+      const diff = (side - now + 4) % 4
+      if (!diff) return a
+      return diff === 3 ? a + 90 : a - 90 * diff // always turn on in the direction of travel (one step back: turn back)
+    })
+  }, [followAt])
+  const quarter = (((-spin / 90) % 4) + 4) % 4
+  const cam = useCamera({ areaRef, camRef, positions, focus: follow ? focus : null, quarter })
   const zoomed = cam.s !== 1
 
   // who sits at the bottom (you): the human whose turn it is; between turns, the last human who played
@@ -296,7 +312,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
         {/* the board is drawn at twice its size and shrunk to fit, so it stays sharp when the camera zooms in */}
         <div className="scene-box">
         <div className="scene">
-          <div className="board-tilt">
+          <div className="board-tilt" style={{ '--spin': `${spin}deg` }}>
             <Board
               game={game}
               positions={positions}
@@ -304,6 +320,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
               card={card}
               onCardClose={closeCard}
               stepMs={HOP_MS}
+              quarter={quarter}
             />
           </div>
         </div>

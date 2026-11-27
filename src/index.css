@@ -1124,3 +1124,13 @@ button:disabled { cursor: not-allowed; }
 .piece-base, .piece3d.current .piece-base { background: radial-gradient(ellipse, rgba(0, 0, 0, .5), transparent 70%) !important; box-shadow: none !important; }
 /* whose turn it is: a soft white glow around the piece (and its gentle bob) */
 .walker.current .piece-figure { filter: drop-shadow(0 0 .1em rgba(255, 255, 255, .95)) drop-shadow(0 0 .3em rgba(255, 255, 255, .55)); }
+
+/* ================= The board turns so the followed piece's side faces you ================= */
+@property --spin { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+.board-tilt { transform: rotateX(var(--tilt)) rotateZ(var(--spin)); transition: --spin .9s cubic-bezier(.4, .1, .25, 1); }
+/* everything that stands up turns the other way at the same time, so it keeps facing you */
+.walker {
+  transform: translate(-50%, -50%) translate(var(--dx, 0), var(--dy, 0)) rotateZ(calc(-1 * var(--spin)));
+  transition: left var(--step) cubic-bezier(.45, .05, .55, .95), top var(--step) cubic-bezier(.45, .05, .55, .95);
+}
+.model-stand { transform: rotateZ(calc(-1 * var(--spin))); }

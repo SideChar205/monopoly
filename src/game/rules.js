@@ -18,10 +18,21 @@ import {
   SPACES, GROUPS, JAIL, START_SALARY, JAIL_FINE, STARTING_CASH, HOUSES_IN_BANK, HOTELS_IN_BANK,
   isOwnable, groupMembers, STATIONS, UTILITIES, mortgageValue, unmortgageCost,
 } from './board.js'
-import { DECKS } from './cards.js'
+import { deckCards } from './cards.js'
 
 export const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899']
 export const PIECE_IDS = ['car', 'hat', 'dog', 'ship', 'boot', 'barrow', 'thimble', 'iron']
+
+// Game settings (chosen on the start screen)
+//   auctions      a property nobody buys goes up for auction (classic rule). Off: it just stays unsold
+//   crazyFortune  extra wild cards in the Fortune pile
+//   crazyFund     extra wild cards in the Town Fund pile
+//   freeParking   taxes, jail fines and card fees go into a pot; landing on Town Square wins it
+//   draft         before the first roll, everyone picks 2 free properties (snake order)
+export const DEFAULT_SETTINGS = { auctions: true, crazyFortune: false, crazyFund: false, freeParking: false, draft: false }
+const DRAFT_ROUNDS = 2
+// money paid to the bank for these reasons goes into the Free Parking pot (rent and purchases never do)
+const POT_REASONS = new Set(['Income Tax', 'Luxury Tax', 'jail fine', 'card', 'repairs'])
 
 const rollDie = () => 1 + Math.floor(Math.random() * 6)
 const shuffled = (n) => {
@@ -156,7 +167,7 @@ function charge(s, p, amount, to, reason, then = null) {
   const player = s.players[p]
   if (amount <= 0) return true
   if (player.cash >= amount) {
-    payNow(s, p, amount, to)
+    payNow(s, p, amount, to, reason)
     return true
   }
   s.debt = { player: p, amount, to, reason, then }
@@ -165,8 +176,9 @@ function charge(s, p, amount, to, reason, then = null) {
   return false
 }
 
-function payNow(s, p, amount, to) {
+function payNow(s, p, amount, to, reason) {
   s.players[p].cash -= amount
+  if ((to === null || to === undefined) && s.settings?.freeParking && POT_REASONS.has(reason)) addToPot(s, amount)
   if (to === 'each') {
     const others = activePlayers(s).filter((i) => i !== p)
     const share = Math.floor(amount / Math.max(1, others.length))
@@ -176,10 +188,19 @@ function payNow(s, p, amount, to) {
   }
 }
 
+function addToPot(s, amount) {
+  s.pot = (s.pot ?? 0) + amount
+  addLog(s, `${money(amount)} goes into the Free Parking pot (now ${money(s.pot)})`)
+}
+
+const richestOther = (s, p, filter = () => true) =>
+  activePlayers(s).filter((i) => i !== p && filter(i)).sort((a, b) => s.players[b].cash - s.players[a].cash)[0]
+
 function drawCard(s, p, deck) {
   const index = s.decks[deck].shift()
-  const card = DECKS[deck][index]
+  const card = s.cards[deck][index]
   if (card.kind === 'free') s.players[p].jailCards.push({ deck, index })
+  else if (card.kind === 'rentPass') (s.players[p].rentPasses ??= []).push({ deck, index })
   else s.decks[deck].push(index)
   s.lastCard = { deck, text: card.text, id: ++s.cardId, player: p }
   addLog(s, `${s.players[p].name} draws ${deck === 'fortune' ? 'Fortune' : 'Town Fund'}: ${card.text}`)
@@ -224,6 +245,126 @@ function applyCard(s, p, card) {
         charge(s, p, -card.amount * others, 'each', 'card')
       }
       return
+    // ---- crazy cards ----
+    case 'swap': {
+      const other = richestOther(s, p, (i) => !s.players[i].inJail)
+      if (other === undefined) return
+      const them = s.players[other]
+      const [a, b] = [player.pos, them.pos]
+      s.moves.push({ player: p, from: a, to: b, kind: 'jump', id: ++s.moveId })
+      s.moves.push({ player: other, from: b, to: a, kind: 'jump', id: ++s.moveId })
+      s.lastMove = s.moves.at(-1)
+      player.pos = b
+      them.pos = a
+      addLog(s, `${player.name} and ${them.name} swap places`)
+      return landOn(s, p)
+    }
+    case 'steal': {
+      const other = richestOther(s, p)
+      if (other === undefined) return
+      const take = Math.min(card.amount, s.players[other].cash)
+      s.players[other].cash -= take
+      player.cash += take
+      addLog(s, `${player.name} takes ${money(take)} from ${s.players[other].name}`)
+      return
+    }
+    case 'allBack':
+      for (const i of activePlayers(s)) {
+        if (i === p || s.players[i].inJail) continue
+        const them = s.players[i]
+        const to = (them.pos - card.steps + 40) % 40
+        s.moves.push({ player: i, from: them.pos, to, kind: 'back', id: ++s.moveId })
+        them.pos = to
+      }
+      s.lastMove = s.moves.at(-1) ?? s.lastMove
+      return
+    case 'goto':
+      s.lastMove = { player: p, from: player.pos, to: card.to, kind: 'forward', id: ++s.moveId }
+      s.moves.push(s.lastMove)
+      player.pos = card.to
+      return landOn(s, p)
+    case 'priciest': {
+      const free = SPACES.map((sp, i) => i).filter((i) => isOwnable(SPACES[i]) && s.owners[i] === null)
+      if (!free.length) {
+        player.cash += 100
+        addLog(s, `Everything is owned: ${player.name} collects ${money(100)} instead`)
+        return
+      }
+      return moveTo(s, p, free.sort((a, b) => SPACES[b].price - SPACES[a].price)[0])
+    }
+    case 'lottery': {
+      const n = rollDie()
+      player.cash += n * card.per
+      addLog(s, `${player.name} rolls a ${n} and collects ${money(n * card.per)}`)
+      return
+    }
+    case 'gamble':
+      if (Math.random() < 0.5) {
+        player.cash += card.win
+        addLog(s, `Heads! ${player.name} wins ${money(card.win)}`)
+      } else {
+        addLog(s, `Tails! ${player.name} pays ${money(card.lose)}`)
+        charge(s, p, card.lose, null, 'card')
+      }
+      return
+    case 'robin': {
+      const alive = activePlayers(s).sort((a, b) => s.players[b].cash - s.players[a].cash)
+      const rich = alive[0]
+      const poor = alive.at(-1)
+      if (rich === poor) return
+      const pay = Math.min(card.amount, s.players[rich].cash)
+      s.players[rich].cash -= pay
+      s.players[poor].cash += pay
+      addLog(s, `${s.players[rich].name} pays ${money(pay)} to ${s.players[poor].name}`)
+      return
+    }
+    case 'freeHouse': {
+      // the best street you could build on, ignoring the cost
+      const options = propertiesOf(s, p).filter((i) => {
+        const cash = player.cash
+        player.cash = 1e9
+        const ok = canBuild(s, p, i)
+        player.cash = cash
+        return ok
+      })
+      const i = options.sort((a, b) => houseCost(b) - houseCost(a) || s.houses[a] - s.houses[b])[0]
+      if (i === undefined) {
+        player.cash += 100
+        addLog(s, `${player.name} has nowhere to build: collects ${money(100)} instead`)
+        return
+      }
+      if (s.houses[i] === 4) {
+        s.bank.hotels -= 1
+        s.bank.houses += 4
+      } else s.bank.houses -= 1
+      s.houses[i] += 1
+      s.lastBuild = { space: i, id: ++s.cardId }
+      addLog(s, `${player.name} gets a free ${s.houses[i] === 5 ? 'hotel' : 'house'} on ${SPACES[i].name}`)
+      return
+    }
+    case 'surprise': {
+      const free = SPACES.map((sp, i) => i).filter((i) => isOwnable(SPACES[i]) && s.owners[i] === null)
+      if (!free.length || !s.settings.auctions) {
+        player.cash += 50
+        addLog(s, `No surprise sale today: ${player.name} collects ${money(50)}`)
+        return
+      }
+      return startAuction(s, free.sort((a, b) => SPACES[a].price - SPACES[b].price)[0], { kind: 'finish' })
+    }
+    case 'amnesty': {
+      const i = propertiesOf(s, p).filter((j) => s.mortgaged[j]).sort((a, b) => SPACES[b].price - SPACES[a].price)[0]
+      if (i === undefined) {
+        player.cash += 50
+        addLog(s, `${player.name} has no mortgages: collects ${money(50)} instead`)
+        return
+      }
+      s.mortgaged[i] = false
+      addLog(s, `${player.name}'s mortgage on ${SPACES[i].name} is paid off for free`)
+      return
+    }
+    case 'everyone':
+      for (const i of activePlayers(s)) s.players[i].cash += card.amount
+      return
     case 'repairs': {
       let cost = 0
       for (const i of propertiesOf(s, p)) cost += s.houses[i] === 5 ? card.hotel : s.houses[i] * card.house
@@ -266,6 +407,14 @@ function landOn(s, p, special = null) {
     case 'fortune':
     case 'fund':
       return drawCard(s, p, space.type)
+    case 'rest':
+      if (s.settings?.freeParking && s.pot > 0) {
+        addLog(s, `${player.name} lands on Town Square and wins the ${money(s.pot)} Free Parking pot!`)
+        player.cash += s.pot
+        s.lastPot = { player: p, amount: s.pot, id: ++s.cardId }
+        s.pot = 0
+      }
+      return
     default:
   }
   if (!isOwnable(space)) return
@@ -277,6 +426,12 @@ function landOn(s, p, special = null) {
   if (owner === p) return
   if (s.mortgaged[i]) {
     addLog(s, `${space.name} is mortgaged: no rent`)
+    return
+  }
+  if (player.rentPasses?.length) {
+    const pass = player.rentPasses.shift()
+    s.decks[pass.deck].push(pass.index)
+    addLog(s, `${player.name} uses a Free Rent Pass on ${space.name}`)
     return
   }
   let rent
@@ -319,6 +474,7 @@ function bankrupt(s, p, to) {
       if (s.mortgaged[i]) interest += Math.ceil(mortgageValue(SPACES[i]) * 0.1) // rulebook: 10% interest right away
     }
     heir.jailCards.push(...player.jailCards)
+    heir.rentPasses = [...(heir.rentPasses ?? []), ...(player.rentPasses ?? [])]
     addLog(s, `${player.name} is bankrupt! Everything goes to ${heir.name}`)
     if (interest) {
       const paid = Math.min(interest, heir.cash)
@@ -326,16 +482,22 @@ function bankrupt(s, p, to) {
       addLog(s, `${heir.name} pays ${money(paid)} interest on the mortgaged properties`)
     }
   } else {
-    // rulebook: the bank auctions everything it takes (buildings excepted)
-    s.auctionQueue = propertiesOf(s, p)
+    // rulebook: the bank auctions everything it takes (buildings excepted); with auctions off it just takes them back
+    s.auctionQueue = s.settings?.auctions === false ? [] : propertiesOf(s, p)
+    for (const i of propertiesOf(s, p)) {
+      s.owners[i] = null
+      s.mortgaged[i] = false
+    }
     for (const i of s.auctionQueue) {
       s.owners[i] = null
       s.mortgaged[i] = false
     }
     for (const c of player.jailCards) s.decks[c.deck].push(c.index)
-    addLog(s, `${player.name} is bankrupt! The bank will auction their properties`)
+    addLog(s, `${player.name} is bankrupt! ${s.auctionQueue.length ? 'The bank will auction their properties' : 'Their properties go back to the bank'}`)
   }
+  if (creditor === null) for (const c of player.rentPasses ?? []) s.decks[c.deck].push(c.index)
   player.jailCards = []
+  player.rentPasses = []
   player.cash = 0
   player.out = true
   player.outAt = s.turn
@@ -419,9 +581,21 @@ function rollForOrder(seats) {
   return { first: contenders[0] ?? 0, log }
 }
 
-export function newGame({ seats, startingCash = STARTING_CASH }) {
+export function newGame({ seats, startingCash = STARTING_CASH, settings: chosen }) {
   const order = rollForOrder(seats)
+  const settings = { ...DEFAULT_SETTINGS, ...chosen }
+  const cards = deckCards(settings)
+  // Card Draft: snake order starting with the first player (A B C, C B A, ...)
+  const round = seats.map((_, k) => (order.first + k) % Math.max(1, seats.length))
+  const draftOrder = []
+  for (let r = 0; r < DRAFT_ROUNDS; r++) draftOrder.push(...(r % 2 ? [...round].reverse() : round))
+  const drafting = settings.draft && seats.length > 1
   return {
+    settings,
+    cards,
+    pot: 0,
+    lastPot: null,
+    draft: drafting ? { order: draftOrder, pick: 0, first: order.first } : null,
     players: seats.map((seat, i) => ({
       name: seat.name,
       isBot: seat.isBot,
@@ -432,6 +606,7 @@ export function newGame({ seats, startingCash = STARTING_CASH }) {
       inJail: false,
       jailTurns: 0,
       jailCards: [],
+      rentPasses: [],
       out: false,
       outAt: null,
     })),
@@ -439,9 +614,9 @@ export function newGame({ seats, startingCash = STARTING_CASH }) {
     houses: SPACES.map(() => 0),
     mortgaged: SPACES.map(() => false),
     bank: { houses: HOUSES_IN_BANK, hotels: HOTELS_IN_BANK },
-    decks: { fortune: shuffled(DECKS.fortune.length), fund: shuffled(DECKS.fund.length) },
-    current: order.first,
-    phase: 'roll',
+    decks: { fortune: shuffled(cards.fortune.length), fund: shuffled(cards.fund.length) },
+    current: drafting ? draftOrder[0] : order.first,
+    phase: drafting ? 'draft' : 'roll',
     dice: null,
     rollId: 0,
     doublesInRow: 0,
@@ -523,6 +698,24 @@ export function gameReducer(state, action) {
       return s
     }
 
+    case 'DRAFT_PICK': {
+      const d = s.draft
+      const i = action.space
+      if (s.phase !== 'draft' || (action.player !== undefined && action.player !== p)) return state
+      if (!isOwnable(SPACES[i] ?? {}) || s.owners[i] !== null) return state
+      s.owners[i] = p
+      s.lastBuy = { player: p, space: i, id: ++s.cardId }
+      addLog(s, `${player.name} drafts ${SPACES[i].name}`)
+      d.pick += 1
+      if (d.pick >= d.order.length) {
+        s.draft = null
+        s.current = d.first
+        s.phase = 'roll'
+        addLog(s, `The draft is done. ${s.players[d.first].name} rolls first`)
+      } else s.current = d.order[d.pick]
+      return s
+    }
+
     case 'PAY_FINE':
       // the fine can be paid before rolling on the first or second try; on the third you must roll
       if (s.phase !== 'roll' || !player.inJail || player.jailTurns >= 2 || player.cash < JAIL_FINE) return state
@@ -530,6 +723,7 @@ export function gameReducer(state, action) {
       player.inJail = false
       player.jailTurns = 0
       addLog(s, `${player.name} pays ${money(JAIL_FINE)} to leave jail`)
+      if (s.settings?.freeParking) addToPot(s, JAIL_FINE)
       return s
 
     case 'USE_CARD': {
@@ -558,6 +752,11 @@ export function gameReducer(state, action) {
     case 'DECLINE':
       if (s.phase !== 'buy') return state
       addLog(s, `${player.name} doesn't buy ${SPACES[player.pos].name}`)
+      if (s.settings?.auctions === false) {
+        s.phase = 'resolving'
+        finish(s)
+        return s
+      }
       startAuction(s, player.pos, { kind: 'finish' })
       return s
 
@@ -657,7 +856,7 @@ export function gameReducer(state, action) {
     case 'PAY_DEBT': {
       if (s.phase !== 'debt' || player.cash < s.debt.amount) return state
       const debt = s.debt
-      payNow(s, p, debt.amount, debt.to)
+      payNow(s, p, debt.amount, debt.to, debt.reason)
       addLog(s, `${player.name} pays the ${money(debt.amount)} they owed`)
       s.debt = null
       s.phase = 'resolving'

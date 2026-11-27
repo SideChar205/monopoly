@@ -49,7 +49,7 @@ function SpaceArt({ space }) {
 }
 
 // one space on the board
-function Space({ index, game, onOpen }) {
+function Space({ index, game, onOpen, pickable }) {
   const space = SPACES[index]
   const spot = gridSpot(index)
   const owner = game.owners[index]
@@ -61,11 +61,13 @@ function Space({ index, game, onOpen }) {
   return (
     <div
       data-space={index}
-      className={`space ${corner ? `${spot.side} corner` : `bottom face-${spot.side}`} t-${space.type}${game.mortgaged[index] ? ' mortgaged' : ''}${ownable ? ' clickable' : ''}`}
+      className={`space ${corner ? `${spot.side} corner` : `bottom face-${spot.side}`} t-${space.type}${game.mortgaged[index] ? ' mortgaged' : ''}${ownable ? ' clickable' : ''}${pickable ? ' pickable' : ''}`}
       style={{ gridRow: spot.row, gridColumn: spot.col, '--band': color ?? 'transparent', '--owner': owner !== null ? game.players[owner].color : 'transparent' }}
       onClick={ownable ? () => onOpen(index) : undefined}
       title={ownable ? `${space.name}: click for details` : space.name}
     >
+      {/* Free Parking: the pot lies on Town Square as a pile of money */}
+      {index === 20 && game.settings?.freeParking && <PotPile amount={game.pot ?? 0} />}
       {corner ? (
         <Corner index={index} />
       ) : (
@@ -86,6 +88,21 @@ function Space({ index, game, onOpen }) {
           {owner !== null && <span className="owner-flag" title={`Owned by ${game.players[owner].name}`} />}
         </div>
       )}
+    </div>
+  )
+}
+
+// the Free Parking pot: a little pile of banknotes with the amount on top
+function PotPile({ amount }) {
+  const notes = Math.min(7, Math.ceil(amount / 75))
+  return (
+    <div className={`pot-pile${amount ? '' : ' empty'}`} title="Free Parking pot: land on Town Square to win it">
+      <span className="pot-notes">
+        {Array.from({ length: notes }, (_, k) => (
+          <span key={k} className="pot-note" style={{ '--k': k }} />
+        ))}
+      </span>
+      <span key={amount} className="pot-amount">${amount.toLocaleString('en-US')}</span>
     </div>
   )
 }
@@ -111,12 +128,28 @@ function clusterSpot(k, n) {
 // where the middle of a space is on the board, in % (the corners are 1.6 times as big as the other spaces)
 const CELL = (k) => (k === 1 ? 0 : 1.6 + (k - 2)) // where row/column k starts
 const SIZE = (k) => (k === 1 || k === 11 ? 1.6 : 1)
-function spaceCenter(i, jail) {
+// a steady "random" number for a seed (so a piece stays where it landed when the screen redraws)
+const rnd = (seed, n) => {
+  const x = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453
+  return x - Math.floor(x)
+}
+// where a piece stands on a space: somewhere random on it, like a real player puts it down,
+// but off the colour band (which is on the edge facing the middle)
+function spaceCenter(i, jail, seed = 0) {
   const spot = gridSpot(i)
-  let fx = 0.5
-  let fy = 0.5
-  if (jail === 'in') [fx, fy] = [0.66, 0.38] // behind the bars
-  if (jail === 'visit') [fx, fy] = [0.3, 0.78] // just visiting: on the edge of the jail space
+  const r1 = rnd(seed, 1)
+  const r2 = rnd(seed, 2)
+  const span = (lo, hi, r) => lo + (hi - lo) * r
+  let fx = span(0.3, 0.7, r1)
+  let fy = span(0.3, 0.7, r2)
+  if (i % 10 !== 0) {
+    if (spot.side === 'bottom') fy = span(0.42, 0.78, r2)
+    if (spot.side === 'top') fy = span(0.22, 0.58, r2)
+    if (spot.side === 'left') [fx, fy] = [span(0.22, 0.58, r1), span(0.3, 0.7, r2)]
+    if (spot.side === 'right') [fx, fy] = [span(0.42, 0.78, r1), span(0.3, 0.7, r2)]
+  }
+  if (jail === 'in') [fx, fy] = [span(0.58, 0.74, r1), span(0.3, 0.46, r2)] // behind the bars
+  if (jail === 'visit') [fx, fy] = [span(0.2, 0.36, r1), span(0.72, 0.84, r2)] // just visiting: on the edge of the jail space
   return { x: ((CELL(spot.col) + SIZE(spot.col) * fx) / 12.6) * 100, y: ((CELL(spot.row) + SIZE(spot.row) * fy) / 12.6) * 100, side: spot.side }
 }
 
@@ -143,7 +176,8 @@ function TokenLayer({ game, positions, stepMs, quarter = 0 }) {
       {Object.entries(groups).flatMap(([key, players]) =>
         players.map((p, k) => {
           const player = game.players[p]
-          const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null)
+          // every landing picks a new spot on the space (the seed changes with each step)
+          const at = spaceCenter(positions[p], key === 'jail-in' ? 'in' : key === 'jail-visit' ? 'visit' : null, hops.current[p] * 7 + p * 13 + 1)
           return (
             <div
               key={p}
@@ -245,7 +279,7 @@ export default function Board({ game, positions, onOpen, card, onCardClose, step
   return (
     <div className="board">
       {SPACES.map((_, i) => (
-        <Space key={i} index={i} game={game} onOpen={onOpen} />
+        <Space key={i} index={i} game={game} onOpen={onOpen} pickable={game.phase === 'draft' && SPACES[i].price !== undefined && game.owners[i] === null} />
       ))}
       <div className="board-center">
         {/* the two card piles and the name, printed on the board */}

@@ -1,10 +1,19 @@
 import { useState } from 'react'
-import { TOKEN_COLORS, PIECE_IDS } from '../game/rules.js'
+import { TOKEN_COLORS, PIECE_IDS, DEFAULT_SETTINGS } from '../game/rules.js'
 import { PIECES, PieceIcon } from './Pieces.jsx'
 import { STARTING_CASH } from '../game/board.js'
 import { randomBotName } from '../game/botNames.js'
 
 const CASH_OPTIONS = [1000, 1500, 2000, 2500]
+
+// the board game's optional rules: a switch each, and an (i) that explains it
+const RULES = [
+  { key: 'auctions', name: 'Auctions', info: "When someone lands on a property and doesn't buy it, everyone bids for it. Off: it simply stays unsold." },
+  { key: 'crazyFund', name: 'Crazy Town Fund', info: 'Adds 8 wild cards to the Town Fund pile: free houses, surprise auctions, free rent passes, block parties and more.' },
+  { key: 'crazyFortune', name: 'Crazy Fortune', info: 'Adds 8 wild cards to the Fortune pile: swap places with the leader, pickpocket the richest, lottery tickets, double or nothing and more.' },
+  { key: 'freeParking', name: 'Free Parking', info: 'Taxes, jail fines and card fees go into a pot in the middle of the board. Land on Town Square to win it all.' },
+  { key: 'draft', name: 'Card Draft', info: 'Before the first roll, everyone picks 2 free properties, taking turns back and forth (snake order).' },
+]
 
 // a piece nobody else at the table has yet (bots get a random one)
 const freePiece = (seats, random = true) => {
@@ -24,6 +33,8 @@ export default function Setup({ initial, onStart }) {
   const [cash, setCash] = useState(initial?.startingCash ?? STARTING_CASH)
   const [picking, setPicking] = useState(null) // which seat is choosing a piece
   const [mode, setMode] = useState(initial?.mode ?? 'board') // 'board' (the board game) or 'deal' (the card game)
+  const [rules, setRules] = useState(() => ({ ...DEFAULT_SETTINGS, ...initial?.settings }))
+  const [info, setInfo] = useState(null) // which rule's explanation is open
   const maxPlayers = mode === 'deal' ? 5 : 6
 
   const setCount = (n) =>
@@ -148,9 +159,35 @@ export default function Setup({ initial, onStart }) {
         </section>
         )}
 
+        {mode === 'board' && (
+          <section>
+            <h2>Rules</h2>
+            <ul className="rule-list">
+              {RULES.map((r) => (
+                <li key={r.key}>
+                  <span className="rule-name">{r.name}</span>
+                  <button
+                    role="switch"
+                    aria-checked={!!rules[r.key]}
+                    className={`switch${rules[r.key] ? ' on' : ''}`}
+                    onClick={() => setRules((x) => ({ ...x, [r.key]: !x[r.key] }))}
+                    title={rules[r.key] ? 'On' : 'Off'}
+                  >
+                    <span className="knob" />
+                  </button>
+                  <button className={`info-btn${info === r.key ? ' open' : ''}`} onClick={() => setInfo((k) => (k === r.key ? null : r.key))} aria-label={`About ${r.name}`}>
+                    i
+                  </button>
+                  {info === r.key && <p className="rule-info">{r.info}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <button
           className="start-btn"
-          onClick={() => onStart({ mode, seats: seats.map((s, i) => ({ ...s, color: TOKEN_COLORS[i], name: s.name.trim() || `Player ${i + 1}` })), startingCash: cash })}
+          onClick={() => onStart({ mode, seats: seats.map((s, i) => ({ ...s, color: TOKEN_COLORS[i], name: s.name.trim() || `Player ${i + 1}` })), startingCash: cash, settings: rules })}
         >
           Start game
         </button>

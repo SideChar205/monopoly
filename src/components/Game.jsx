@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { SPACES, GROUPS, JAIL_FINE, groupMembers } from '../game/board.js'
 import { activePlayers, netWorth, propertiesOf, auctionBidder } from '../game/rules.js'
-import { botMove, botActor } from '../game/bot.js'
+import { botMove, botActor, draftPick } from '../game/bot.js'
 import Board, { Token } from './Board.jsx'
 import { Question, Chest } from './Art.jsx'
 import Deed from './Deed.jsx'
@@ -318,7 +318,7 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
             <Board
               game={game}
               positions={positions}
-              onOpen={setDeed}
+              onOpen={(i) => (game.phase === 'draft' && myTurn && !busy && game.owners[i] === null ? dispatch({ type: 'DRAFT_PICK', space: i, player: game.current }) : setDeed(i))}
               card={null}
               stepMs={HOP_MS}
               quarter={quarter}
@@ -352,12 +352,22 @@ export default function Game({ game: latest, dispatch, onPlayAgain, onQuit }) {
             <span className="hud-chip">Turn {game.turn}</span>
             <span className="hud-chip" title="Houses left in the bank">🏠 {game.bank.houses}</span>
             <span className="hud-chip" title="Hotels left in the bank">🏨 {game.bank.hotels}</span>
+            {game.settings?.freeParking && (
+              <span key={game.pot} className="hud-chip pot-chip" title="Free Parking pot: land on Town Square to win it">
+                🅿️ ${(game.pot ?? 0).toLocaleString('en-US')}
+              </span>
+            )}
           </div>
           <div className="hud-status">
             {game.phase === 'over' ? (
               'Game over'
             ) : game.phase === 'auction' ? (
               <>🔨 Auction: {SPACES[game.auction.space].name}</>
+            ) : game.phase === 'draft' ? (
+              <>
+                <Token player={me} index={game.current} /> Card draft: {myTurn ? `${me.name}, pick a property` : `${me.name} is picking`}
+                {!myTurn && <span className="dots" />}
+              </>
             ) : !myTurn ? (
               <>
                 <Token player={me} index={game.current} /> {me.name} is thinking<span className="dots" />
@@ -448,6 +458,18 @@ function Prompt({ game, dispatch, space, confirm, setConfirm, openDeed }) {
       <>
         <p className="prompt-title">{game.dice && game.dice[0] === game.dice[1] ? 'Doubles! Roll again' : `${me.name}, your turn`}</p>
         <p className="prompt-sub roll-hint">🎲 Roll the dice in the middle of the board <small>(or press Space)</small></p>
+      </>
+    )
+  }
+
+  if (game.phase === 'draft') {
+    return (
+      <>
+        <p className="prompt-title">Card draft: pick a free property</p>
+        <p className="prompt-sub">Click any glowing property on the board. Pick {game.draft.pick + 1} of {game.draft.order.length}.</p>
+        <div className="prompt-buttons">
+          <button className="btn" onClick={() => dispatch({ type: 'DRAFT_PICK', space: draftPick(game, p), player: p })}>Pick for me</button>
+        </div>
       </>
     )
   }

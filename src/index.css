@@ -1269,3 +1269,40 @@ button:disabled { cursor: not-allowed; }
 .players-rail .seat.turn { box-shadow: 0 0 0 2px var(--c), 0 0 18px color-mix(in srgb, var(--c) 50%, transparent), 0 8px 22px rgba(0, 0, 0, .35); }
 .table-area.zoomed .players-rail { opacity: .5; transition: opacity .4s ease; }
 .table-area.zoomed .players-rail:hover { opacity: 1; }
+
+/* ================= Start screen: optional rules ================= */
+.rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rule-list li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 12px; background: rgba(255, 255, 255, .04); }
+.rule-name { font-weight: 800; color: #fcd34d; font-size: 16px; }
+.switch { position: relative; width: 50px; height: 28px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .25); background: #475569; cursor: pointer; padding: 0; transition: background .2s; }
+.switch .knob { position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #e2e8f0; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); transition: transform .22s cubic-bezier(.3, .8, .4, 1.3); }
+.switch.on { background: #22c55e; }
+.switch.on .knob { transform: translateX(22px); background: #fff; }
+.info-btn { width: 26px; height: 26px; border-radius: 50%; border: 0; cursor: pointer; background: #3b82f6; color: #fff; font: 900 15px/1 Georgia, serif; font-style: italic; }
+.info-btn.open { background: #fbbf24; color: #1a1300; }
+.rule-info { grid-column: 1 / -1; margin: 2px 0 2px; font-size: 13px; line-height: 1.4; color: #cbd5e1; animation: fade .2s ease; }
+
+/* ================= Free Parking pot on Town Square ================= */
+.pot-pile { position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); z-index: 2; display: flex; flex-direction: column; align-items: center; gap: .2em; pointer-events: none; }
+.pot-notes { position: relative; width: 3.4em; height: 2em; }
+.pot-note {
+  position: absolute; left: 0; top: calc(1.2em - var(--k) * .22em); width: 3.4em; height: 1.7em; border-radius: .2em;
+  background: linear-gradient(135deg, #86efac, #22c55e 55%, #15803d); border: .12em solid #14532d;
+  box-shadow: inset 0 0 0 .2em rgba(255, 255, 255, .35), 0 .1em .2em rgba(0, 0, 0, .35);
+  transform: rotate(calc((var(--k) - 3) * 7deg)) translateX(calc((var(--k) - 3) * .12em));
+}
+.pot-note::after { content: '$'; position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: 1em; color: #14532d; }
+.pot-amount { padding: .1em .55em; border-radius: 999px; background: #14532d; color: #fff; font-weight: 900; font-size: 1.15em; box-shadow: 0 .1em .3em rgba(0, 0, 0, .4); animation: potBump .5s ease; }
+.pot-pile.empty .pot-amount { background: rgba(20, 83, 45, .55); }
+@keyframes potBump { 40% { transform: scale(1.3); } }
+.pot-chip { animation: potBump .5s ease; color: #bbf7d0; }
+
+/* ================= Card Draft: the properties you can still pick glow ================= */
+.space.pickable { animation: pickGlow 1.4s ease-in-out infinite; cursor: pointer; }
+@keyframes pickGlow { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(251, 191, 36, 0); } 50% { box-shadow: inset 0 0 0 .25em rgba(251, 191, 36, .9); } }
+.pot-pile { font-size: 1.75em; left: 64%; top: 66%; }
+.pot-amount { font-size: 1.05em; padding: .12em .5em; border: .1em solid #fff; }
+.pot-pile { left: 56%; top: 54%; }
+.pot-amount { position: absolute; left: 50%; top: 62%; transform: translate(-50%, 0); white-space: nowrap; }
+@keyframes potBump { 40% { transform: translate(-50%, 0) scale(1.3); } }
+.pot-chip { animation: none; }

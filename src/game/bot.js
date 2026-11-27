@@ -48,6 +48,26 @@ function auctionLimit(s, p, i) {
   return Math.min(Math.round(value), s.players[p].cash - 80)
 }
 
+// Card Draft: the free property worth most to this player (sets it can complete, stations it collects, then price)
+export function draftPick(s, p) {
+  let best = null
+  let bestScore = -Infinity
+  SPACES.forEach((space, i) => {
+    if (!isOwnable(space) || s.owners[i] !== null) return
+    let score = space.price
+    if (space.type === 'street') {
+      const members = groupMembers(space.group)
+      const mine = members.filter((j) => s.owners[j] === p).length
+      const theirs = members.filter((j) => s.owners[j] !== null && s.owners[j] !== p).length
+      score += mine * 160 - theirs * 60
+    } else if (space.type === 'station') score += 40 + 60 * s.owners.filter((o, j) => o === p && SPACES[j].type === 'station').length
+    else score -= 30
+    score += Math.random() * 25 // not always the same choice
+    if (score > bestScore) [best, bestScore] = [i, score]
+  })
+  return best
+}
+
 // which player a bot move is for (in an auction, it's whoever's turn it is to bid)
 export const botActor = (s) => (s.phase === 'auction' ? auctionBidder(s) : s.current)
 
@@ -63,6 +83,8 @@ export function botMove(s) {
 
   const p = s.current
   const me = s.players[p]
+
+  if (s.phase === 'draft') return { type: 'DRAFT_PICK', space: draftPick(s, p), player: p }
 
   if (s.phase === 'tax') {
     // a quick estimate: a bot with a small fortune pays 10%, otherwise the flat $200
